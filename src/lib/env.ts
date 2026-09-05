@@ -178,6 +178,18 @@ export type Env = z.infer<typeof schema>;
 
 let cached: Env | null = null;
 
+// Les hébergeurs peuvent importer les variables facultatives avec une valeur
+// vide. Les traiter comme absentes permet aux valeurs par défaut de s'appliquer.
+// Conserver les valeurs non vides telles quelles, notamment les secrets.
+function environmentInput() {
+  return Object.fromEntries(
+    Object.entries(process.env).map(([key, value]) => [
+      key,
+      value?.trim() === "" ? undefined : value,
+    ]),
+  );
+}
+
 /**
  * true si l'environnement LOGIQUE de déploiement est « production ».
  * Volontairement indépendant du `NODE_ENV` de Next (qui vaut "production"
@@ -261,7 +273,7 @@ export function productionGuardIssues(env: Env): string[] {
 
 export function getEnv(): Env {
   if (cached) return cached;
-  const parsed = schema.safeParse(process.env);
+  const parsed = schema.safeParse(environmentInput());
   if (!parsed.success) {
     const details = parsed.error.issues
       .map((i) => `  - ${i.path.join(".")}: ${i.message}`)
@@ -286,7 +298,7 @@ export function getEnv(): Env {
  * sans jeter, pour un affichage lisible.
  */
 export function inspectEnv(): { ok: boolean; issues: string[] } {
-  const parsed = schema.safeParse(process.env);
+  const parsed = schema.safeParse(environmentInput());
   if (!parsed.success) {
     return {
       ok: false,
