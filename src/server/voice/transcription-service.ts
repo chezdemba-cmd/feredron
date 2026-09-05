@@ -4,7 +4,7 @@ import { getEnv } from "@/lib/env";
 import { Conflict, Forbidden, NotFound } from "@/server/errors";
 import { writeAuditLog } from "@/server/audit/log";
 import { dispatchInboundAi } from "@/server/ai/dispatcher";
-import { getVoiceProvider } from "./provider";
+import { getVoiceProvider, VoiceTranscribeError } from "./provider";
 import { downloadWhatsAppMedia, AudioDownloadError } from "./audio-service";
 import {
   detectVoiceLanguage,
@@ -150,8 +150,9 @@ export async function transcribeMessage(input: JobInput): Promise<void> {
       mimeType: audio.mimeType || message.mediaMimeType || "audio/ogg",
       languageHint: "fr,bm",
     });
-  } catch {
-    await fail(row.id, input.organizationId, message.id, "PROVIDER_ERROR");
+  } catch (e) {
+    const code = e instanceof VoiceTranscribeError ? e.reason : "PROVIDER_ERROR";
+    await fail(row.id, input.organizationId, message.id, code);
     return;
   }
 
