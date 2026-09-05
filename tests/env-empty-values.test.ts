@@ -5,6 +5,7 @@ import { getEnv, inspectEnv } from "../src/lib/env.ts";
 test("deployment environment handles blank optional values without bypassing validation", () => {
   const original = process.env;
   process.env = {
+    NODE_ENV: "test",
     DATABASE_URL: "postgresql://user:password@localhost:5432/test",
     AUTH_SESSION_SECRET: "test-session-secret-with-at-least-32-characters",
     APP_ENV: "staging",

@@ -18,7 +18,15 @@ export class MockVoiceProvider implements VoiceProvider {
   readonly model = "mock-stt-1";
 
   async transcribe(input: VoiceTranscribeInput): Promise<VoiceTranscribeResult> {
-    const raw = Buffer.from(input.audio).toString("utf8").trim();
+    let raw: string;
+    try {
+      raw = new TextDecoder("utf-8", { fatal: true }).decode(input.audio).trim();
+    } catch {
+      throw new Error("Mock voice provider only accepts UTF-8 text fixtures, not audio recordings.");
+    }
+    if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(raw)) {
+      throw new Error("Mock voice provider only accepts text fixtures, not binary audio.");
+    }
 
     let text = raw;
     let language: string | null = null;

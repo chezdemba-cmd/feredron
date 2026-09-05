@@ -135,8 +135,12 @@ export async function transcribeAppAudioAction(
     const maxBytes = Math.round(getEnv().VOICE_MAX_FILE_MB * 1024 * 1024);
     if (file.size > maxBytes) throw Conflict("Enregistrement trop long.");
 
+    const provider = getVoiceProvider();
+    if (provider.name === "mock") {
+      throw Conflict("La transcription vocale n’est pas encore configurée. Écrivez votre demande pour continuer.");
+    }
     const bytes = new Uint8Array(await file.arrayBuffer());
-    const result = await getVoiceProvider().transcribe({
+    const result = await provider.transcribe({
       audio: bytes,
       mimeType: file.type || "audio/webm",
       languageHint: "fr,bm",

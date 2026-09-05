@@ -5,6 +5,20 @@ import { MockVoiceProvider } from "../src/server/voice/mock-provider.ts";
 const p = new MockVoiceProvider();
 const enc = (s: string) => new TextEncoder().encode(s);
 
+test("real WebM bytes are rejected instead of displayed as a transcript", async () => {
+  await assert.rejects(
+    p.transcribe({ audio: new Uint8Array([0x1a, 0x45, 0xdf, 0xa3, 0x93, 0x42]), mimeType: "audio/webm" }),
+    /only accepts UTF-8 text fixtures/,
+  );
+});
+
+test("binary audio with valid UTF-8 is also rejected", async () => {
+  await assert.rejects(
+    p.transcribe({ audio: enc("RIFF\u0000\u0000WAVE"), mimeType: "audio/wav" }),
+    /not binary audio/,
+  );
+});
+
 test("déterministe : mêmes octets → même transcription", async () => {
   const a = await p.transcribe({ audio: enc("bonjour"), mimeType: "audio/ogg" });
   const b = await p.transcribe({ audio: enc("bonjour"), mimeType: "audio/ogg" });
