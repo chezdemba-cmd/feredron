@@ -4,11 +4,12 @@
 // Modules métier suivants (commandes, créances, conversations, IA) à venir.
 
 generator client {
-  provider   = "prisma-client-js"
-  // Moteur "binary" (sous-processus) plutôt que "library" (.node chargé via
-  // require) : évite les soucis de LoadLibrary sur certains environnements
-  // Windows (chemins avec espaces, antivirus, VC++ redist manquant).
-  engineType = "binary"
+  provider = "prisma-client-js"
+  // Moteur "library" (défaut, .node chargé en process) : seul chemin fiable sur
+  // Vercel/Lambda — le moteur "binary" (exécutable séparé) n'est pas embarqué
+  // par le tracing Next, d'où des PrismaClientInitializationError en prod.
+  // `native` = poste local ; `rhel-openssl-3.0.x` = runtime Vercel.
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
 
 datasource db {
