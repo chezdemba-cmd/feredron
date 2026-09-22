@@ -28,6 +28,14 @@ export class MockWhatsAppProvider implements WhatsAppProvider {
   ): Promise<WhatsAppSendResult> {
     return { ok: true, externalMessageId: `mock-tpl-${randomUUID()}` };
   }
+
+  async sendAudio(
+    _ctx: WhatsAppSendContext,
+    _audio: Buffer,
+    _mimeType: string,
+  ): Promise<WhatsAppSendResult> {
+    return { ok: true, externalMessageId: `mock-audio-${randomUUID()}` };
+  }
 }
 
 let cached: WhatsAppProvider | null = null;

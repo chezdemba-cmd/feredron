@@ -30,4 +30,13 @@ export interface WhatsAppProvider {
       components?: WhatsAppTemplateComponent[];
     },
   ): Promise<WhatsAppSendResult>;
+  /**
+   * Envoi d'une note vocale (réponse IA à un message vocal client, Djeli
+   * Voice §Kooma TTS). `audio` = octets bruts, jamais persistés au repos.
+   */
+  sendAudio(
+    ctx: WhatsAppSendContext,
+    audio: Buffer,
+    mimeType: string,
+  ): Promise<WhatsAppSendResult>;
 }

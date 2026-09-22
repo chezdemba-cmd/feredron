@@ -5,7 +5,10 @@ import { getEnv } from "@/lib/env";
 import { writeAuditLog } from "@/server/audit/log";
 import { rateLimit } from "@/server/whatsapp/rate-limit";
 import { isCustomerServiceWindowOpen } from "@/server/whatsapp/service-window";
-import { sendAiConversationMessage } from "@/server/whatsapp/message-service";
+import {
+  sendAiConversationMessage,
+  sendAiConversationVoiceReply,
+} from "@/server/whatsapp/message-service";
 import { buildSystemPrompt, AI_PROMPT_VERSION } from "./system-prompt";
 import { getAiProvider, type AiMessage } from "./provider";
 import { claimAiRun, finishAiRun } from "./run-service";
@@ -341,14 +344,25 @@ async function run(input: InboundAiInput): Promise<void> {
   }
 
   // ── Réponse automatique ──
+  // Message client vocal → réponse texte + note vocale (Kooma TTS, best-effort,
+  // cf. sendAiConversationVoiceReply). Message texte → réponse texte seule.
   const reply = plan.reply.trim();
   if (policy.autoReply && reply && windowOpen) {
-    await sendAiConversationMessage({
-      organizationId: input.organizationId,
-      conversationId: conversation.id,
-      body: reply,
-      aiRunId,
-    });
+    if (message.type === "AUDIO") {
+      await sendAiConversationVoiceReply({
+        organizationId: input.organizationId,
+        conversationId: conversation.id,
+        body: reply,
+        aiRunId,
+      });
+    } else {
+      await sendAiConversationMessage({
+        organizationId: input.organizationId,
+        conversationId: conversation.id,
+        body: reply,
+        aiRunId,
+      });
+    }
   }
 
   await finishAiRun(aiRunId, {

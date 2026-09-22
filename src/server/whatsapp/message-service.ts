@@ -9,6 +9,8 @@ import { recordUsage } from "@/server/billing/usage-service";
 import { assertDemoExternalSendAllowed } from "@/server/demo/guard";
 import { isCustomerServiceWindowOpen } from "./service-window";
 import { nextModeOnHumanReply } from "./conversation-mode";
+import { getTtsProvider } from "@/server/voice/tts-provider";
+import { logError } from "@/server/errors";
 import type {
   WhatsAppSendResult,
   WhatsAppTemplateComponent,
@@ -108,6 +110,86 @@ export async function sendAiConversationMessage(input: {
     void recordUsage(input.organizationId, "WHATSAPP_MESSAGES", 1, "UTC");
   }
   return { messageId: message.id, status: result.ok ? "SENT" : "FAILED" };
+}
+
+/**
+ * Réponse AUTOMATIQUE de Djeli IA à un message vocal client : envoie le texte
+ * (fiabilité, traçabilité, recherche) PUIS, en best-effort, une note vocale
+ * générée par synthèse (Kooma TTS) — symétrie avec l'entrée vocale du client.
+ * Si la synthèse ou l'envoi audio échoue, le texte reste livré : l'audio est
+ * un plus, jamais un point de blocage. Audio jamais persisté au repos (généré
+ * à la volée, envoyé, jeté).
+ */
+export async function sendAiConversationVoiceReply(input: {
+  organizationId: string;
+  conversationId: string;
+  body: string;
+  aiRunId: string;
+}): Promise<{
+  textMessageId: string;
+  audioMessageId: string | null;
+  status: "SENT" | "FAILED";
+}> {
+  const text = await sendAiConversationMessage(input);
+  if (text.status !== "SENT") {
+    return { textMessageId: text.messageId, audioMessageId: null, status: text.status };
+  }
+
+  const tts = getTtsProvider();
+  if (!tts) return { textMessageId: text.messageId, audioMessageId: null, status: "SENT" };
+
+  try {
+    const conversation = await prisma.conversation.findFirst({
+      where: { id: input.conversationId, organizationId: input.organizationId },
+      include: { whatsappConnection: true },
+    });
+    if (!conversation || conversation.whatsappConnection.status !== "CONNECTED") {
+      return { textMessageId: text.messageId, audioMessageId: null, status: "SENT" };
+    }
+
+    const { audio, mimeType } = await tts.synthesize(input.body.trim());
+    const result = await getWhatsAppProvider().sendAudio(
+      sendContext(conversation.whatsappConnection, conversation.externalWaId),
+      audio,
+      mimeType,
+    );
+    const now = new Date();
+    const audioMessage = await prisma.message.create({
+      data: {
+        organizationId: input.organizationId,
+        conversationId: conversation.id,
+        whatsappConnectionId: conversation.whatsappConnectionId,
+        customerId: conversation.customerId,
+        externalMessageId: result.ok ? result.externalMessageId : null,
+        direction: "OUTBOUND",
+        type: "AUDIO",
+        status: result.ok ? "SENT" : "FAILED",
+        generatedByAi: true,
+        aiRunId: input.aiRunId,
+        providerTimestamp: now,
+        ...(result.ok
+          ? {}
+          : { errorCode: result.errorCode, errorMessage: result.errorMessage.slice(0, 500) }),
+      },
+    });
+    if (result.ok) {
+      await prisma.conversation.update({
+        where: { id: conversation.id },
+        data: { lastMessageAt: now, lastOutboundAt: now },
+      });
+      void recordUsage(input.organizationId, "WHATSAPP_MESSAGES", 1, "UTC");
+    }
+    return {
+      textMessageId: text.messageId,
+      audioMessageId: audioMessage.id,
+      status: "SENT",
+    };
+  } catch (error) {
+    // Best-effort : la note vocale ne doit jamais faire échouer une réponse
+    // dont le texte est déjà livré avec succès.
+    logError("whatsapp.sendAiConversationVoiceReply.audioFailed", error);
+    return { textMessageId: text.messageId, audioMessageId: null, status: "SENT" };
+  }
 }
 
 /**
