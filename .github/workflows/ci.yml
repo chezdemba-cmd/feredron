@@ -25,6 +25,9 @@ jobs:
 
     env:
       DATABASE_URL: postgresql://djeli:djeli@localhost:5432/djeli_test?schema=public
+      # Pas de pooler en CI : DIRECT_URL = DATABASE_URL (requis par `prisma
+      # migrate deploy`, cf. prisma/schema.prisma).
+      DIRECT_URL: postgresql://djeli:djeli@localhost:5432/djeli_test?schema=public
       AUTH_SESSION_SECRET: ci-secret-ci-secret-ci-secret-ci-secret
       APP_ENV: staging
       NEXT_PUBLIC_APP_URL: http://localhost:3000

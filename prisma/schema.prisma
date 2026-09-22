@@ -13,8 +13,18 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  // Connexion applicative — via le pooler (PgBouncer/Supavisor, transaction
+  // mode) : correcte pour les requêtes normales du serverless.
+  url       = env("DATABASE_URL")
+  // Connexion DIRECTE (pas de pooler transaction mode) — OBLIGATOIRE pour
+  // `prisma migrate deploy`/`migrate dev` (erreur P1012 sinon, pas de repli
+  // silencieux) : PgBouncer en mode transaction ne supporte pas les verrous
+  // de session dont Migrate a besoin, ce qui le fait rester bloqué
+  // indéfiniment plutôt que d'échouer proprement (constaté en prod le
+  // 2026-09-22, build Vercel figé juste après la connexion). En local/CI
+  // sans pooler, DIRECT_URL peut être identique à DATABASE_URL.
+  directUrl = env("DIRECT_URL")
 }
 
 // ─────────────────────────────── Enums ───────────────────────────────

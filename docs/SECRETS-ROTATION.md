@@ -13,7 +13,8 @@ d'hébergement, **jamais** dans le dépôt ni dans la base.
 | `AI_API_KEY` / `VOICE_API_KEY` / `EMAIL_API_KEY` | Coupe l'accès au provider (IA / transcription / e-mail transactionnel) | Roter chez le provider, mettre à jour, redéployer. Aucun impact données. |
 | `LANGUAGE_DEMO_CLIENT_SECRET` | Le client API de démo ne s'authentifie plus | Régénérer côté `LanguageApplicationClient` (secret **haché** en base). |
 | `AUTOMATION_CRON_SECRET` | Le worker / cron ne peut plus déclencher les routes internes | Changer la valeur **et** la configuration du worker/cron simultanément. |
-| `DATABASE_URL` (mot de passe) | Coupe la connexion DB | Roter le rôle Postgres, mettre à jour, redéployer web **et** worker. |
+| `DATABASE_URL` (mot de passe) | Coupe la connexion DB | Roter le rôle Postgres, mettre à jour **DATABASE_URL et DIRECT_URL** (même identifiants, ports différents), redéployer web **et** worker. |
+| `DIRECT_URL` | Coupe `prisma migrate deploy` (pas l'app — elle n'utilise que `DATABASE_URL`) | Même rotation que `DATABASE_URL` : identifiants identiques, port 5432 (direct/session) au lieu de 6543 (pooler transaction), sans `pgbouncer=true`. |
 
 ## Cadence recommandée
 

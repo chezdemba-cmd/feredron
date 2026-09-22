@@ -26,6 +26,12 @@ serverless : pas de process de fond persistant.
   Vercel sur tout build, production ET preview) — **jamais** en local
   (`npm run build` sur un poste dev n'y touche pas). Cible toujours le
   `DATABASE_URL` de l'environnement Vercel courant.
+  ⚠️ **Nécessite `DIRECT_URL`** (connexion Postgres directe, hors pooler
+  PgBouncer/Supavisor — même hôte que `DATABASE_URL`, port 5432 au lieu de
+  6543, sans `pgbouncer=true`) : sans elle, `prisma migrate deploy` reste
+  **bloqué indéfiniment** au lieu d'échouer proprement (constaté en prod le
+  2026-09-22 — build figé, annulé manuellement via `vercel rm`). Voir
+  `prisma/schema.prisma` (`directUrl`) et `.env.example`.
 - **jobs planifiés** (relances, expiration des réservations, file de jobs) :
   `vercel.json` déclare 3 Vercel Cron Jobs (GET) vers `/api/internal/{jobs,
   automations,maintenance}/run`, authentifiés par l'en-tête `Authorization:
