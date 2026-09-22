@@ -16,6 +16,27 @@ jobs:
           distribution: temurin
           java-version: "21"
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      # android/capacitor-cordova-android-plugins/ est volontairement
+      # gitignored (android/.gitignore) : c'est du code généré, régénéré ici
+      # via `cap sync` plutôt que commité. Ne nécessite PAS `next build`
+      # (mode WebView "remote hosted" — capacitor.config.ts n'a besoin que
+      # des variables d'env, pas du build web).
+      - name: Capacitor sync (android)
+        # PRODUCTION_API_URL pilote server.url dans capacitor.config.ts — sans
+        # elle, `cap sync` régénérerait une config vide (mode local) et
+        # écraserait l'URL de prod déjà correcte dans le fichier committé.
+        env:
+          PRODUCTION_API_URL: https://feredron.vercel.app
+        run: npx cap sync android
+
       # ubuntu-latest embarque déjà un SDK Android (ANDROID_HOME préconfiguré),
       # mais le binaire sdkmanager n'est pas sur le PATH par défaut — on le
       # localise et on ajoute son dossier au PATH pour les étapes suivantes.
