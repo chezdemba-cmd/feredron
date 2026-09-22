@@ -55,7 +55,7 @@ const schema = z.object({
 
   // ── Phase 6B : Djeli Voice ──
   // Sans configuration, le provider « mock » (déterministe, aucune API) suffit.
-  VOICE_PROVIDER: z.enum(["mock", "openai-compatible"]).default("mock"),
+  VOICE_PROVIDER: z.enum(["mock", "openai-compatible", "bambara-hf", "kooma"]).default("mock"),
   VOICE_API_KEY: z.string().min(1).optional(),
   VOICE_BASE_URL: z.string().url().optional(),
   VOICE_MODEL: z.string().min(1).default("whisper-1"),
@@ -224,6 +224,12 @@ export function productionGuardIssues(env: Env): string[] {
   }
   if (env.VOICE_PROVIDER === "openai-compatible" && !env.VOICE_API_KEY) {
     issues.push("VOICE_PROVIDER=openai-compatible exige VOICE_API_KEY.");
+  }
+  if (env.VOICE_PROVIDER === "bambara-hf" && !env.VOICE_BASE_URL) {
+    issues.push("VOICE_PROVIDER=bambara-hf exige VOICE_BASE_URL (endpoint du service bambara).");
+  }
+  if (env.VOICE_PROVIDER === "kooma" && !env.VOICE_API_KEY) {
+    issues.push("VOICE_PROVIDER=kooma exige VOICE_API_KEY.");
   }
   if (env.WHATSAPP_PROVIDER === "mock" && process.env.WHATSAPP_ALLOW_MOCK_IN_PROD !== "1") {
     issues.push(

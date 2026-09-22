@@ -17,7 +17,11 @@
  */
 import { setTimeout as sleep } from "node:timers/promises";
 
-const BASE = (process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000").replace(/\/+$/, "");
+const BASE = (
+  process.env.INTERNAL_APP_URL ??
+  process.env.NEXT_PUBLIC_APP_URL ??
+  "http://localhost:3000"
+).replace(/\/+$/, "");
 const SECRET = process.env.AUTOMATION_CRON_SECRET ?? "";
 const JOB_INTERVAL = Number(process.env.WORKER_JOB_INTERVAL_MS ?? 5_000);
 const SCHED_INTERVAL = Number(process.env.WORKER_SCHEDULER_INTERVAL_MS ?? 300_000);

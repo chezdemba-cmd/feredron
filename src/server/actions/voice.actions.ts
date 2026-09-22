@@ -13,6 +13,7 @@ import {
 } from "@/server/voice/transcription-service";
 import { getVoiceProvider } from "@/server/voice/provider";
 import { detectVoiceLanguage } from "@/server/voice/language-detection";
+import { languageCore } from "@/server/language/language-core-client";
 import {
   correctTranscriptionSchema,
   retranscribeSchema,
@@ -123,7 +124,7 @@ export async function transcribeAppAudioAction(
   formData: FormData,
 ): Promise<ActionResult<{ text: string; language: string; confidence: number | null }>> {
   return runAction(async () => {
-    await actionOrgContext({
+    const ctx = await actionOrgContext({
       permission: "ai.use",
       organizationId: String(formData.get("organizationId") ?? ""),
     });
@@ -149,8 +150,35 @@ export async function transcribeAppAudioAction(
       text: result.text,
       providerLanguage: result.detectedLanguage,
     });
+    const text = result.text.trim();
+    if (text) {
+      // Matière brute pour le Language Core (§31) : ce canal est ÉPHÉMÈRE côté
+      // métier (aucune VoiceTranscription), mais le texte transcrit lui-même
+      // reste une observation utile pour le corpus BM/FR. Best-effort, en
+      // arrière-plan. `resolvedMatchType: "NONE"` est REQUIS pour que
+      // l'agrégateur du Learning Loop ramasse cette observation (il n'agrège
+      // que les observations non résolues) — d'où la tentative de résolution
+      // avant soumission, comme côté WhatsApp.
+      void languageCore
+        .resolveExpression({
+          text,
+          language: language === "BM" ? "BM" : language === "MIXED" ? "MIXED" : null,
+          organizationId: ctx.organization.id,
+        })
+        .then((lc) => {
+          if (!lc.matched) {
+            void languageCore.submitObservation({
+              originalText: text,
+              detectedLanguage: language === "UNKNOWN" ? "OTHER" : language,
+              organizationId: ctx.organization.id,
+              resolvedMatchType: "NONE",
+              contextType: "app-voice",
+            });
+          }
+        });
+    }
     return {
-      text: result.text.trim(),
+      text,
       language,
       confidence: result.confidence,
     };

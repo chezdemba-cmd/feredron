@@ -91,7 +91,15 @@ export const getOrgContext = cache(
       memberships.find((m) => m.organizationId === preferred) ?? memberships[0];
     if (!chosen) return null;
 
-    return requireOrganizationAccess(user.id, chosen.organizationId);
+    // `chosen` porte déjà `organization` (via `listMemberships`) : on évalue
+    // l'accès sur ces données au lieu de refaire un `findUnique` identique.
+    const decision = evaluateOrganizationAccess(chosen);
+    if (!decision.ok) {
+      if (decision.reason === "ORG_INACTIVE") throw OrganizationUnavailable();
+      throw Forbidden("Vous n'êtes pas membre de cette entreprise.");
+    }
+
+    return { user, organization: chosen.organization, membership: chosen, role: chosen.role };
   },
 );
 

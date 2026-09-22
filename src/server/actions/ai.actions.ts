@@ -30,7 +30,7 @@ export async function askAssistantAction(
       permission: "ai.use",
       organizationId: raw.organizationId,
     });
-    const { question } = askAssistantSchema.parse(raw);
+    const { question, voiceOriginalText, voiceLanguage } = askAssistantSchema.parse(raw);
 
     return runInternalAssistant({
       organizationId: ctx.organization.id,
@@ -41,6 +41,10 @@ export async function askAssistantAction(
       },
       user: { id: ctx.user.id, role: ctx.role },
       question,
+      voiceCorrection:
+        voiceOriginalText && voiceOriginalText !== question
+          ? { originalText: voiceOriginalText, language: voiceLanguage }
+          : undefined,
     });
   });
 }

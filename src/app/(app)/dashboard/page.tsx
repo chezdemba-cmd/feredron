@@ -26,71 +26,81 @@ export default async function DashboardPage() {
   const showCommerce = can(role, "orders.read");
   const showDebts = can(role, "debts.read");
 
-  const [memberCount, pendingInvites, activity, stock, commerce] =
-    await Promise.all([
-      prisma.organizationMember.count({
-        where: { organizationId: organization.id, status: "ACTIVE" },
-      }),
-      prisma.invitation.count({
-        where: { organizationId: organization.id, status: "PENDING" },
-      }),
-      can(role, "audit.read")
-        ? listAuditLogs(organization.id, 6)
-        : Promise.resolve([]),
-      can(role, "stock.read")
-        ? getStockSummary(organization.id)
-        : Promise.resolve(null),
-      showCommerce
-        ? Promise.all([
-            prisma.order.aggregate({
-              where: {
-                organizationId: organization.id,
-                status: "DELIVERED",
-                deliveredAt: { gte: today.gte, lt: today.lt },
-              },
-              _sum: { totalAmount: true },
-            }),
-            prisma.order.count({
-              where: {
-                organizationId: organization.id,
-                createdAt: { gte: today.gte, lt: today.lt },
-              },
-            }),
-            prisma.customer.count({
-              where: {
-                organizationId: organization.id,
-                createdAt: { gte: today.gte, lt: today.lt },
-              },
-            }),
-          ])
-        : Promise.resolve(null),
-    ]);
+  const debtsScope = orderScopeWhere(role, user.id);
+  const showRecos = can(role, "recommendations.read");
+
+  // Tous ces blocs sont indépendants les uns des autres (aucun ne dépend du
+  // résultat d'un autre) : on les lance en une seule vague au lieu de les
+  // attendre en série, pour réduire le temps de chargement du tableau de bord.
+  const [
+    memberCount,
+    pendingInvites,
+    activity,
+    stock,
+    commerce,
+    overdueDebts,
+    cashToday,
+    onboarding,
+    proactive,
+    digest,
+  ] = await Promise.all([
+    prisma.organizationMember.count({
+      where: { organizationId: organization.id, status: "ACTIVE" },
+    }),
+    prisma.invitation.count({
+      where: { organizationId: organization.id, status: "PENDING" },
+    }),
+    can(role, "audit.read")
+      ? listAuditLogs(organization.id, 6)
+      : Promise.resolve([]),
+    can(role, "stock.read")
+      ? getStockSummary(organization.id)
+      : Promise.resolve(null),
+    showCommerce
+      ? Promise.all([
+          prisma.order.aggregate({
+            where: {
+              organizationId: organization.id,
+              status: "DELIVERED",
+              deliveredAt: { gte: today.gte, lt: today.lt },
+            },
+            _sum: { totalAmount: true },
+          }),
+          prisma.order.count({
+            where: {
+              organizationId: organization.id,
+              createdAt: { gte: today.gte, lt: today.lt },
+            },
+          }),
+          prisma.customer.count({
+            where: {
+              organizationId: organization.id,
+              createdAt: { gte: today.gte, lt: today.lt },
+            },
+          }),
+        ])
+      : Promise.resolve(null),
+    showDebts
+      ? getOverdueDebtsSummary(organization.id, { scopeWhere: debtsScope })
+      : Promise.resolve(null),
+    showDebts
+      ? getCashCollectedToday(organization.id, organization.timezone)
+      : Promise.resolve(null),
+    getOnboardingProgress(organization.id),
+    showRecos
+      ? getProactiveDigest(organization.id, role, user.id)
+      : Promise.resolve(null),
+    showRecos && showCommerce
+      ? buildDailyDigest(organization.id, {
+          timezone: organization.timezone,
+          currency: organization.currency,
+        })
+      : Promise.resolve(null),
+  ]);
 
   const salesToday = commerce?.[0]._sum.totalAmount ?? 0;
   const ordersToday = commerce?.[1] ?? 0;
   const newCustomersToday = commerce?.[2] ?? 0;
-
-  const debtsScope = orderScopeWhere(role, user.id);
-  const [overdueDebts, cashToday] = showDebts
-    ? await Promise.all([
-        getOverdueDebtsSummary(organization.id, { scopeWhere: debtsScope }),
-        getCashCollectedToday(organization.id, organization.timezone),
-      ])
-    : [null, null];
-
-  const onboarding = await getOnboardingProgress(organization.id);
-  const showRecos = can(role, "recommendations.read");
-  const [proactive, digest] = showRecos
-    ? await Promise.all([
-        getProactiveDigest(organization.id, role, user.id),
-        showCommerce
-          ? buildDailyDigest(organization.id, {
-              timezone: organization.timezone,
-              currency: organization.currency,
-            })
-          : Promise.resolve(null),
-      ])
-    : [null, null];
 
   return (
     <>

@@ -70,8 +70,8 @@ export { MockVoiceProvider } from "./mock-provider";
  * multipart `file` + `model` + `language?`). Architecture remplaçable ; la clé
  * API n'est jamais exposée au frontend ni journalisée.
  */
-class OpenAiCompatibleVoiceProvider implements VoiceProvider {
-  readonly name = "openai-compatible";
+export class OpenAiCompatibleVoiceProvider implements VoiceProvider {
+  readonly name: string;
   readonly model: string;
   private readonly apiKey: string;
   private readonly baseUrl: string;
@@ -82,11 +82,15 @@ class OpenAiCompatibleVoiceProvider implements VoiceProvider {
     baseUrl: string;
     model: string;
     timeoutMs: number;
+    /** Nom tracé dans VoiceTranscription.provider (logs/DB) — distingue un
+     *  vrai OpenAI d'un service compatible (ex. Kooma) derrière le même code. */
+    name?: string;
   }) {
     this.apiKey = cfg.apiKey;
     this.baseUrl = cfg.baseUrl.replace(/\/+$/, "");
     this.model = cfg.model;
     this.timeoutMs = cfg.timeoutMs;
+    this.name = cfg.name ?? "openai-compatible";
   }
 
   async transcribe(input: VoiceTranscribeInput): Promise<VoiceTranscribeResult> {
@@ -174,7 +178,91 @@ class OpenAiCompatibleVoiceProvider implements VoiceProvider {
   }
 }
 
+/**
+ * Provider pour un service bambara auto-hébergé (ex. `sudoping01/bambara-asr-v2`
+ * derrière un petit serveur FastAPI/whosper, aujourd'hui exposé via ngrok pour
+ * les tests). Contrat volontairement minimal — CE N'EST PAS l'API OpenAI :
+ * `POST {baseUrl}/transcribe`, champ `file`, réponse `{ text: string }` (pas de
+ * langue/durée/segments détectés par ce service).
+ */
+export class BambaraHfVoiceProvider implements VoiceProvider {
+  readonly name = "bambara-hf";
+  readonly model: string;
+  private readonly apiKey: string | undefined;
+  private readonly baseUrl: string;
+  private readonly timeoutMs: number;
+
+  constructor(cfg: { apiKey?: string; baseUrl: string; model: string; timeoutMs: number }) {
+    this.apiKey = cfg.apiKey;
+    this.baseUrl = cfg.baseUrl.replace(/\/+$/, "");
+    this.model = cfg.model;
+    this.timeoutMs = cfg.timeoutMs;
+  }
+
+  async transcribe(input: VoiceTranscribeInput): Promise<VoiceTranscribeResult> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    try {
+      const form = new FormData();
+      form.append(
+        "file",
+        new Blob([Buffer.from(input.audio)], { type: input.mimeType || "audio/ogg" }),
+        "audio.wav",
+      );
+
+      const res = await fetch(`${this.baseUrl}/transcribe`, {
+        method: "POST",
+        signal: controller.signal,
+        headers: this.apiKey ? { Authorization: `Bearer ${this.apiKey}` } : undefined,
+        body: form,
+      });
+      if (!res.ok) {
+        logError("voice.provider.transcribe", new Error(`HTTP ${res.status}`), {
+          status: res.status,
+          provider: this.name,
+        });
+        throw new VoiceTranscribeError(
+          voiceErrorReason(res.status),
+          voiceErrorMessage(res.status),
+        );
+      }
+
+      const data = (await res.json()) as { text?: string };
+      return {
+        text: (data.text ?? "").trim(),
+        detectedLanguage: null,
+        confidence: null,
+        durationMs: null,
+        provider: this.name,
+        model: this.model,
+      };
+    } catch (error) {
+      if (error instanceof VoiceTranscribeError) throw error; // déjà journalisé
+      const aborted = error instanceof Error && error.name === "AbortError";
+      logError("voice.provider.transcribe", error, { aborted, provider: this.name });
+      throw new VoiceTranscribeError(
+        aborted ? "TIMEOUT" : "NETWORK",
+        aborted
+          ? "Le service de transcription a mis trop de temps à répondre. Réessayez."
+          : "Le service de transcription est momentanément injoignable. Réessayez dans un instant.",
+        error,
+      );
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+}
+
 const DEFAULT_OPENAI_VOICE_BASE_URL = "https://api.openai.com/v1";
+// Contrat confirmé via https://api.kooma.ai/openapi.json (2026-09-22) :
+// POST {base}/audio/transcriptions, multipart `file` (+ `model`,
+// `response_format`), réponse `{"text": ...}` — détection de langue
+// automatique, PAS de paramètre `language` documenté. Compatible avec
+// OpenAiCompatibleVoiceProvider tel quel : les appelants réels de ce projet
+// passent toujours languageHint="fr,bm" (multi-langue), que la regex de
+// `transcribe()` rejette déjà — aucun `language` n'est donc jamais envoyé.
+const DEFAULT_KOOMA_VOICE_BASE_URL = "https://api.kooma.ai/v1";
+const DEFAULT_KOOMA_MODEL = "kooma-stt-1";
 
 let cached: VoiceProvider | null = null;
 
@@ -191,9 +279,41 @@ export function getVoiceProvider(): VoiceProvider {
     });
     return cached;
   }
+  if (env.VOICE_PROVIDER === "kooma" && env.VOICE_API_KEY) {
+    cached = new OpenAiCompatibleVoiceProvider({
+      apiKey: env.VOICE_API_KEY,
+      baseUrl: env.VOICE_BASE_URL || DEFAULT_KOOMA_VOICE_BASE_URL,
+      // VOICE_MODEL a "whisper-1" comme défaut global (pensé pour OpenAI) :
+      // si l'opérateur ne l'a pas explicitement changé, on bascule sur le
+      // modèle Kooma plutôt que d'envoyer "whisper-1" à leur API par erreur.
+      model: env.VOICE_MODEL === "whisper-1" ? DEFAULT_KOOMA_MODEL : env.VOICE_MODEL,
+      timeoutMs: env.VOICE_TIMEOUT_MS,
+      name: "kooma",
+    });
+    return cached;
+  }
+  if (env.VOICE_PROVIDER === "bambara-hf" && env.VOICE_BASE_URL) {
+    cached = new BambaraHfVoiceProvider({
+      apiKey: env.VOICE_API_KEY,
+      baseUrl: env.VOICE_BASE_URL,
+      model: env.VOICE_MODEL,
+      timeoutMs: env.VOICE_TIMEOUT_MS,
+    });
+    return cached;
+  }
   // Repli mock. `getEnv()` bloque déjà le démarrage en production si
   // VOICE_PROVIDER=mock sans VOICE_ALLOW_MOCK_IN_PROD=1 (§12).
   if (env.VOICE_PROVIDER === "openai-compatible") {
+    logError("voice.provider.fallbackToMock", {
+      reason: "VOICE_API_KEY manquant",
+    });
+  }
+  if (env.VOICE_PROVIDER === "bambara-hf") {
+    logError("voice.provider.fallbackToMock", {
+      reason: "VOICE_BASE_URL manquant",
+    });
+  }
+  if (env.VOICE_PROVIDER === "kooma") {
     logError("voice.provider.fallbackToMock", {
       reason: "VOICE_API_KEY manquant",
     });

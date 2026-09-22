@@ -35,3 +35,49 @@ test("MockEmailProvider : n'envoie rien, renvoie un succès", async () => {
   });
   assert.equal(r.ok, true);
 });
+
+test("ResendEmailProvider : envoi réussi retourne id", async () => {
+  const { ResendEmailProvider } = await import("../src/server/email/resend-provider.ts");
+  const originalFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = (async (_url: string | URL | Request, init?: RequestInit) => {
+      const headers = init?.headers as Record<string, string>;
+      assert.equal(headers["Authorization"], "Bearer re_test_key");
+      return new Response(JSON.stringify({ id: "resend_msg_001" }), { status: 200 });
+    }) as typeof fetch;
+
+    const provider = new ResendEmailProvider({ apiKey: "re_test_key", from: "test@feredron.app" });
+    const res = await provider.send({
+      to: "user@example.com",
+      subject: "Test",
+      html: "<p>Hello</p>",
+      text: "Hello",
+    });
+    assert.equal(res.ok, true);
+    if (res.ok) assert.equal(res.id, "resend_msg_001");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("ResendEmailProvider : gère les erreurs de l'API Resend gracieusement", async () => {
+  const { ResendEmailProvider } = await import("../src/server/email/resend-provider.ts");
+  const originalFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = (async () => {
+      return new Response(JSON.stringify({ message: "Invalid API Key" }), { status: 401 });
+    }) as typeof fetch;
+
+    const provider = new ResendEmailProvider({ apiKey: "re_invalid", from: "test@feredron.app" });
+    const res = await provider.send({
+      to: "user@example.com",
+      subject: "Test",
+      html: "<p>Hello</p>",
+      text: "Hello",
+    });
+    assert.equal(res.ok, false);
+    if (!res.ok) assert.equal(res.error, "Invalid API Key");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

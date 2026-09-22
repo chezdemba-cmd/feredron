@@ -577,6 +577,10 @@ export const conversationIdSchema = z.object({
 
 export const askAssistantSchema = z.object({
   question: z.string().trim().min(2, "Posez une question").max(1000),
+  // Présents seulement si la question vient du micro ET a été éditée avant
+  // envoi — signal de correction pour le Language Core (§31).
+  voiceOriginalText: z.string().trim().max(1000).optional(),
+  voiceLanguage: z.enum(["FR", "BM", "MIXED", "UNKNOWN"]).optional(),
 });
 
 export const orderDraftIdSchema = z.object({

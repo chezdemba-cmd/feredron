@@ -37,6 +37,7 @@ export function Assistant({
 }) {
   const router = useRouter();
   const [turns, setTurns] = useState<Turn[]>([]);
+  const [voiceMeta, setVoiceMeta] = useState<{ original: string; language: string } | null>(null);
   const pendingQ = useRef<string | null>(null);
   const [state, formAction, isPending] = useActionState(askAssistantAction, null);
   const formRef = useRef<HTMLFormElement>(null);
@@ -62,14 +63,19 @@ export function Assistant({
     }
   }, [turns]);
 
-  function submit(question: string) {
+  function submit(question: string, voice?: { original: string; language: string }) {
     pendingQ.current = question;
     setTurns((prev) => [...prev, { question }]);
     const fd = new FormData();
     fd.set("organizationId", organizationId);
     fd.set("question", question);
+    if (voice && voice.original !== question) {
+      fd.set("voiceOriginalText", voice.original);
+      fd.set("voiceLanguage", voice.language);
+    }
     formAction(fd);
     formRef.current?.reset();
+    setVoiceMeta(null);
   }
 
   return (
@@ -110,7 +116,7 @@ export function Assistant({
           ref={formRef}
           action={(fd) => {
             const q = String(fd.get("question") ?? "").trim();
-            if (q) submit(q);
+            if (q) submit(q, voiceMeta ?? undefined);
           }}
           style={{ display: "flex", gap: 8, flexWrap: "wrap" }}
         >
@@ -125,11 +131,12 @@ export function Assistant({
           />
           <MicButton
             organizationId={organizationId}
-            onTranscribed={(text) => {
+            onTranscribed={(text, language) => {
               if (inputRef.current) {
                 inputRef.current.value = text;
                 inputRef.current.focus();
               }
+              setVoiceMeta({ original: text, language });
             }}
             disabled={isPending}
           />

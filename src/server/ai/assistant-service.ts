@@ -14,6 +14,7 @@ import { isAiIntent } from "./intents";
 import type { CapabilityContext } from "./capabilities";
 import { aiUsageGate, recordAiUsage } from "@/server/billing/ai-gate";
 import { getStockSnapshots } from "@/server/stock/stock-service";
+import { languageCore } from "@/server/language/language-core-client";
 
 /**
  * Assistant interne `/ai` du commerçant. Les lectures s'exécutent directement
@@ -43,8 +44,22 @@ export async function runInternalAssistant(input: {
   organization: { name: string; currency: string; timezone: string };
   user: { id: string; role: Role };
   question: string;
+  /** Présent si la question vient du micro et a été éditée avant envoi (§31). */
+  voiceCorrection?: { originalText: string; language?: "FR" | "BM" | "MIXED" | "UNKNOWN" };
 }): Promise<AssistantAnswer> {
   const question = input.question.trim().slice(0, 1000);
+
+  if (input.voiceCorrection) {
+    const lang = input.voiceCorrection.language;
+    void languageCore.submitCorrection({
+      originalText: input.voiceCorrection.originalText,
+      correctedText: question,
+      detectedLanguage: !lang || lang === "UNKNOWN" ? "OTHER" : lang,
+      organizationId: input.organizationId,
+      context: "internal-assistant-voice-correction",
+      correctedByRef: `user:${input.user.id}`,
+    });
+  }
 
   // Phase 8 — feature gating + contrôle de coût fournisseur (§13, §20, §21).
   const gate = await aiUsageGate(input.organizationId, input.organization.timezone);
@@ -198,6 +213,19 @@ export async function runInternalAssistant(input: {
         },
       };
     }
+
+    // Signal « no-match » pour le Learning Loop (§31, en écho au pipeline
+    // WhatsApp) : n'affecte jamais la réponse, best-effort, en arrière-plan.
+    void languageCore.resolveExpression({ text: question, organizationId: input.organizationId }).then((lc) => {
+      if (!lc.matched && question.length >= 4 && question.length <= 300) {
+        void languageCore.submitObservation({
+          originalText: question,
+          organizationId: input.organizationId,
+          resolvedMatchType: "NONE",
+          contextType: "internal-assistant",
+        });
+      }
+    });
 
     // ── Lecture : raisonnement + tools ──
     const capCtx: CapabilityContext = {
