@@ -120,9 +120,19 @@ async function run(input: InboundAiInput): Promise<void> {
     effectiveBody = t.effectiveText.trim();
     voiceLanguage = t.detectedLanguage;
     // Confiance basse → clarification / handoff, JAMAIS d'action sensible (§20, §52).
-    if (t.confidence != null && t.confidence < lowConfidenceThreshold()) {
+    // Kooma ne renvoie aucun score de confiance (confidence toujours null) ;
+    // vu la précision mesurée en conditions réelles (~70%, cf. mémoire projet),
+    // une confiance INCONNUE pour ce provider est traitée comme BASSE plutôt
+    // que comme fiable par défaut.
+    const lowConfidence =
+      (t.confidence != null && t.confidence < lowConfidenceThreshold()) ||
+      (t.confidence == null && t.provider === "kooma");
+    if (lowConfidence) {
       await handoff(aiRunId, conversation.id, conversation.customer?.id ?? null, {
-        reason: `Transcription vocale peu fiable (confiance ${t.confidence.toFixed(2)}).`,
+        reason:
+          t.confidence != null
+            ? `Transcription vocale peu fiable (confiance ${t.confidence.toFixed(2)}).`
+            : "Transcription vocale sans score de confiance (provider Kooma) — clarification systématique.",
         windowOpen,
         startedAt,
         replyIfOpen:
