@@ -100,6 +100,11 @@ export function MicButton({
       setSeconds(0);
       timerRef.current = setInterval(() => setSeconds((s) => s + 1), 1000);
     } catch (err) {
+      // Si le flux a été obtenu mais qu'une étape suivante a échoué (ex.
+      // MediaRecorder), le micro resterait sinon verrouillé indéfiniment —
+      // y compris pour les prochaines tentatives — faute de libération.
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
       const name = err instanceof Error ? err.name : "";
       // eslint-disable-next-line no-console
       console.error("mic.getUserMedia.failed", err);
