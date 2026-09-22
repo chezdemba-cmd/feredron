@@ -99,9 +99,22 @@ export function MicButton({
       setState("recording");
       setSeconds(0);
       timerRef.current = setInterval(() => setSeconds((s) => s + 1), 1000);
-    } catch {
+    } catch (err) {
+      const name = err instanceof Error ? err.name : "";
+      // eslint-disable-next-line no-console
+      console.error("mic.getUserMedia.failed", err);
       setState("error");
-      setMsg("Autorisation micro refusée.");
+      if (name === "NotAllowedError" || name === "PermissionDeniedError") {
+        setMsg("Autorisation micro refusée.");
+      } else if (name === "NotFoundError" || name === "DevicesNotFoundError") {
+        setMsg("Aucun microphone détecté sur cet appareil.");
+      } else if (name === "NotReadableError" || name === "TrackStartError") {
+        setMsg("Micro déjà utilisé par une autre application.");
+      } else if (name === "SecurityError") {
+        setMsg("Accès micro bloqué (contexte non sécurisé).");
+      } else {
+        setMsg(`Erreur micro : ${name || (err instanceof Error ? err.message : String(err))}`);
+      }
     }
   }, [organizationId, onTranscribed, cleanup]);
 
