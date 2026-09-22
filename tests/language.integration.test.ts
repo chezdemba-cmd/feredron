@@ -35,6 +35,11 @@ const ORG_A = `it-lang-orgA-${TAG}`;
 const ORG_B = `it-lang-orgB-${TAG}`;
 const REF = `test:${TAG}`;
 const ALL_SCOPES = ["ORGANIZATION", "DOMAIN", "GLOBAL"] as const;
+// Périmètre « opérateur Djeli » pour le seed des tests — bypass volontaire du
+// contrôle d'accès (§ access.ts) qui n'est pas l'objet de ces scénarios-ci.
+const SUPER = { organizationId: "", isSuperAdmin: true };
+const asOrgA = { organizationId: ORG_A, isSuperAdmin: false };
+const asOrgB = { organizationId: ORG_B, isSuperAdmin: false };
 
 before(async () => {
   if (!ENABLED) return;
@@ -67,19 +72,22 @@ after(async () => {
 });
 
 test("resolve ne sert pas une entrée SUGGESTED ; sert l'entrée une fois VALIDATED", suiteOpts, async () => {
-  const g = await d.createEntry({
-    canonicalText: TERM,
-    language: "BM",
-    scope: "GLOBAL",
-    meaning: "sucre",
-    status: "SUGGESTED",
-    createdByRef: REF,
-  });
+  const g = await d.createEntry(
+    {
+      canonicalText: TERM,
+      language: "BM",
+      scope: "GLOBAL",
+      meaning: "sucre",
+      status: "SUGGESTED",
+      createdByRef: REF,
+    },
+    SUPER,
+  );
 
   let r = await d.resolveExpression({ text: TERM, ctx: { allowedScopes: [...ALL_SCOPES] } });
   assert.equal(r.matched, false, "SUGGESTED n'est jamais résolu");
 
-  await d.validateEntry({ entryId: g.id, actorRef: REF });
+  await d.validateEntry({ entryId: g.id, actorRef: REF }, SUPER);
   r = await d.resolveExpression({ text: TERM, ctx: { allowedScopes: [...ALL_SCOPES] } });
   assert.equal(r.matched, true);
   assert.equal(r.scope, "GLOBAL");
@@ -87,16 +95,19 @@ test("resolve ne sert pas une entrée SUGGESTED ; sert l'entrée une fois VALIDA
 });
 
 test("priorité ORGANIZATION > GLOBAL, et isolation inter-org", suiteOpts, async () => {
-  const orgEntry = await d.createEntry({
-    canonicalText: TERM,
-    language: "BM",
-    scope: "ORGANIZATION",
-    organizationId: ORG_A,
-    meaning: "sucre en poudre 1kg",
-    status: "SUGGESTED",
-    createdByRef: REF,
-  });
-  await d.validateEntry({ entryId: orgEntry.id, actorRef: REF });
+  const orgEntry = await d.createEntry(
+    {
+      canonicalText: TERM,
+      language: "BM",
+      scope: "ORGANIZATION",
+      organizationId: ORG_A,
+      meaning: "sucre en poudre 1kg",
+      status: "SUGGESTED",
+      createdByRef: REF,
+    },
+    asOrgA,
+  );
+  await d.validateEntry({ entryId: orgEntry.id, actorRef: REF }, asOrgA);
 
   const asA = await d.resolveExpression({
     text: TERM,
@@ -118,25 +129,65 @@ test("priorité ORGANIZATION > GLOBAL, et isolation inter-org", suiteOpts, async
 test("garde-fous de forme de scope à la création", suiteOpts, async () => {
   await assert.rejects(
     () =>
-      d.createEntry({
-        canonicalText: `x${TAG}`,
-        language: "BM",
-        scope: "GLOBAL",
-        organizationId: ORG_A,
-        createdByRef: REF,
-      }),
+      d.createEntry(
+        {
+          canonicalText: `x${TAG}`,
+          language: "BM",
+          scope: "GLOBAL",
+          organizationId: ORG_A,
+          createdByRef: REF,
+        },
+        SUPER,
+      ),
     /GLOBAL ne porte ni organizationId/i,
   );
   await assert.rejects(
     () =>
-      d.createEntry({
-        canonicalText: `y${TAG}`,
-        language: "BM",
-        scope: "ORGANIZATION",
-        createdByRef: REF,
-      }),
+      d.createEntry(
+        {
+          canonicalText: `y${TAG}`,
+          language: "BM",
+          scope: "ORGANIZATION",
+          createdByRef: REF,
+        },
+        asOrgA,
+      ),
     /ORGANIZATION exige un organizationId/i,
   );
+});
+
+test("IDOR : une organisation ne peut ni lire-modifier ni usurper l'organizationId d'une autre", suiteOpts, async () => {
+  // Création : un acteur non-superadmin ne peut pas créer une entrée
+  // ORGANIZATION pour une autre organisation que la sienne, même s'il
+  // fournit explicitement l'organizationId d'une autre (spoof).
+  const spoofed = await d.createEntry(
+    {
+      canonicalText: `spoof${TAG}`,
+      language: "BM",
+      scope: "ORGANIZATION",
+      organizationId: ORG_B, // tentative de spoof : acteur = ORG_A
+      createdByRef: REF,
+    },
+    asOrgA,
+  );
+  const stored = await d.lcDb.languageEntry.findUniqueOrThrow({ where: { id: spoofed.id } });
+  assert.equal(stored.organizationId, ORG_A, "organizationId forcé à celui de l'acteur, jamais celui fourni");
+
+  // Mutation : ORG_B ne peut ni valider ni modifier une entrée ORGANIZATION
+  // appartenant à ORG_A, même en connaissant son id.
+  const privateToA = await d.createEntry(
+    {
+      canonicalText: `private${TAG}`,
+      language: "BM",
+      scope: "ORGANIZATION",
+      organizationId: ORG_A,
+      createdByRef: REF,
+    },
+    asOrgA,
+  );
+  await assert.rejects(() => d.validateEntry({ entryId: privateToA.id, actorRef: REF }, asOrgB));
+  // Un opérateur Djeli (superadmin), lui, le peut toujours.
+  await d.validateEntry({ entryId: privateToA.id, actorRef: REF }, SUPER);
 });
 
 test("auth client API : secret bcrypt, mauvais secret et client inactif rejetés", suiteOpts, async () => {

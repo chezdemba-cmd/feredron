@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import type { LanguageCode, LanguageScope } from "@prisma/client";
-import { apiError, readJson, requireClient } from "@/language-core/api-helpers";
+import { apiError, readJson, requireClient, clientOrgActorScope } from "@/language-core/api-helpers";
 import { lcDb } from "@/language-core/db";
 import { createEntry } from "@/language-core/entry-service";
 import { isAppError } from "@/server/errors";
@@ -79,18 +79,21 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const entry = await createEntry({
-      canonicalText: body.canonicalText,
-      language: body.language as LanguageCode,
-      scope,
-      domainCode: body.domain ?? null,
-      organizationId: body.organizationId ?? null,
-      meaning: body.meaning ?? null,
-      frenchTranslation: body.frenchTranslation ?? null,
-      source: "IMPORT",
-      status: "SUGGESTED",
-      createdByRef: `app:${client.applicationCode}`,
-    });
+    const entry = await createEntry(
+      {
+        canonicalText: body.canonicalText,
+        language: body.language as LanguageCode,
+        scope,
+        domainCode: body.domain ?? null,
+        organizationId: body.organizationId ?? null,
+        meaning: body.meaning ?? null,
+        frenchTranslation: body.frenchTranslation ?? null,
+        source: "IMPORT",
+        status: "SUGGESTED",
+        createdByRef: `app:${client.applicationCode}`,
+      },
+      clientOrgActorScope(client),
+    );
     return NextResponse.json({ id: entry.id, status: entry.status }, { status: 201 });
   } catch (e) {
     if (isAppError(e)) return apiError(409, "CONFLICT", e.userMessage);

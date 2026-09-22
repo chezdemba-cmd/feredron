@@ -47,14 +47,14 @@ export async function authenticateRequest(
     return { ok: false, error: { status: 401, message: "Client invalide." } };
   }
 
-  const rl = rateLimit(`lang-api:${clientId}`, RATE_LIMIT_PER_MIN, 60_000);
-  if (!rl.allowed) {
-    return { ok: false, error: { status: 429, message: "Trop de requêtes." } };
-  }
-
   const match = await bcrypt.compare(secret, client.secretHash);
   if (!match) {
     return { ok: false, error: { status: 401, message: "Secret invalide." } };
+  }
+
+  const rl = rateLimit(`lang-api:${clientId}`, RATE_LIMIT_PER_MIN, 60_000);
+  if (!rl.allowed) {
+    return { ok: false, error: { status: 429, message: "Trop de requêtes." } };
   }
 
   void lcDb.languageApplicationClient
@@ -99,7 +99,7 @@ export async function provisionClient(input: {
       allowedScopes: input.allowedScopes,
     },
   });
-  const secretHash = await bcrypt.hash(input.secret, 10);
+  const secretHash = await bcrypt.hash(input.secret, 12);
   await lcDb.languageApplicationClient.upsert({
     where: { clientId: input.clientId },
     create: {

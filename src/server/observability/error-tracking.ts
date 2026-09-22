@@ -2,7 +2,7 @@ import "server-only";
 import * as Sentry from "@sentry/node";
 import { getEnv } from "@/lib/env";
 import { setExceptionSink } from "@/server/errors";
-import { logger } from "@/lib/logger";
+import { logger, looksLikeSecret } from "@/lib/logger";
 
 /**
  * Suivi d'erreurs (§25). Si `SENTRY_DSN` est défini, initialise Sentry et
@@ -60,7 +60,7 @@ function sanitizeExtra(
   if (!fields) return undefined;
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(fields)) {
-    out[k] = REDACT.test(k) ? "[redacted]" : v;
+    out[k] = REDACT.test(k) || (typeof v === "string" && looksLikeSecret(v)) ? "[redacted]" : v;
   }
   return out;
 }

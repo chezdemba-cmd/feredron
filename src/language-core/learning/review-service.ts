@@ -3,6 +3,7 @@ import type { LanguageCode } from "@prisma/client";
 import { lcDb } from "../db";
 import { Conflict, NotFound } from "@/server/errors";
 import { lcAudit } from "../audit";
+import { assertScopeAccess, type ActorScope } from "../access";
 
 /**
  * Décisions humaines sur un candidat. Chaque décision est historisée
@@ -10,9 +11,10 @@ import { lcAudit } from "../audit";
  * VALIDATED (§1, §22, §63).
  */
 
-async function load(candidateId: string) {
+async function load(candidateId: string, actor: ActorScope) {
   const c = await lcDb.learningCandidate.findUnique({ where: { id: candidateId } });
   if (!c) throw NotFound("Candidat introuvable.");
+  assertScopeAccess({ scope: c.scopeSuggestion, organizationId: c.organizationId }, actor);
   return c;
 }
 
@@ -34,12 +36,15 @@ async function logReview(input: {
   });
 }
 
-export async function approveCandidate(input: {
-  candidateId: string;
-  actorRef: string;
-  note?: string | null;
-}) {
-  const c = await load(input.candidateId);
+export async function approveCandidate(
+  input: {
+    candidateId: string;
+    actorRef: string;
+    note?: string | null;
+  },
+  actor: ActorScope,
+) {
+  const c = await load(input.candidateId, actor);
   if (c.status === "PROMOTED") throw Conflict("Candidat déjà promu.");
   if (c.status === "CONFLICT") {
     throw Conflict("Candidat en conflit avec une entrée existante — résoudre le conflit d'abord.");
@@ -59,12 +64,15 @@ export async function approveCandidate(input: {
   return updated;
 }
 
-export async function rejectCandidate(input: {
-  candidateId: string;
-  actorRef: string;
-  reason?: string | null;
-}) {
-  const c = await load(input.candidateId);
+export async function rejectCandidate(
+  input: {
+    candidateId: string;
+    actorRef: string;
+    reason?: string | null;
+  },
+  actor: ActorScope,
+) {
+  const c = await load(input.candidateId, actor);
   if (c.status === "PROMOTED") throw Conflict("Candidat déjà promu.");
   const updated = await lcDb.learningCandidate.update({
     where: { id: c.id },
@@ -86,8 +94,11 @@ export async function rejectCandidate(input: {
   return updated;
 }
 
-export async function ignoreCandidate(input: { candidateId: string; actorRef: string }) {
-  const c = await load(input.candidateId);
+export async function ignoreCandidate(
+  input: { candidateId: string; actorRef: string },
+  actor: ActorScope,
+) {
+  const c = await load(input.candidateId, actor);
   const updated = await lcDb.learningCandidate.update({
     where: { id: c.id },
     data: { status: "IGNORED", reviewedByRef: input.actorRef, reviewedAt: new Date() },
@@ -97,18 +108,21 @@ export async function ignoreCandidate(input: { candidateId: string; actorRef: st
 }
 
 /** « Modifier puis approuver » — ajuste la proposition avant approbation. */
-export async function editCandidateProposal(input: {
-  candidateId: string;
-  actorRef: string;
-  patch: Partial<{
-    canonicalText: string;
-    proposedMeaning: string | null;
-    proposedTranslation: string | null;
-    proposedTranslationLang: LanguageCode | null;
-    proposedIntentCode: string | null;
-  }>;
-}) {
-  const c = await load(input.candidateId);
+export async function editCandidateProposal(
+  input: {
+    candidateId: string;
+    actorRef: string;
+    patch: Partial<{
+      canonicalText: string;
+      proposedMeaning: string | null;
+      proposedTranslation: string | null;
+      proposedTranslationLang: LanguageCode | null;
+      proposedIntentCode: string | null;
+    }>;
+  },
+  actor: ActorScope,
+) {
+  const c = await load(input.candidateId, actor);
   if (c.status === "PROMOTED") throw Conflict("Candidat déjà promu.");
   const updated = await lcDb.learningCandidate.update({
     where: { id: c.id },
@@ -131,11 +145,17 @@ export async function editCandidateProposal(input: {
   return updated;
 }
 
-export async function markCandidateUseful(input: { candidateId: string; actorRef: string }) {
-  await load(input.candidateId);
+export async function markCandidateUseful(
+  input: { candidateId: string; actorRef: string },
+  actor: ActorScope,
+) {
+  await load(input.candidateId, actor);
   await logReview({ candidateId: input.candidateId, action: "MARK_USEFUL", actorRef: input.actorRef });
 }
-export async function markCandidateWrong(input: { candidateId: string; actorRef: string; note?: string | null }) {
-  await load(input.candidateId);
+export async function markCandidateWrong(
+  input: { candidateId: string; actorRef: string; note?: string | null },
+  actor: ActorScope,
+) {
+  await load(input.candidateId, actor);
   await logReview({ candidateId: input.candidateId, action: "MARK_WRONG", actorRef: input.actorRef, note: input.note });
 }

@@ -4,10 +4,12 @@ import { revalidatePath } from "next/cache";
 import type { LanguageCode } from "@prisma/client";
 import { requireUserOrThrow } from "@/server/auth/current-user";
 import { getOrgContext } from "@/server/tenant/context";
+import { isSuperAdmin } from "@/server/admin/guard";
 import { requirePermission } from "@/server/rbac/guard";
 import type { Permission } from "@/server/rbac/permissions";
 import { runAction, formToObject } from "./runner";
 import { Forbidden } from "@/server/errors";
+import type { ActorScope } from "@/language-core/access";
 import { recomputeLearningCandidates } from "@/language-core/learning/aggregator";
 import {
   approveCandidate,
@@ -20,12 +22,15 @@ import { buildLearningDataset, type DatasetFormat } from "@/language-core/learni
 import { replayCandidate } from "@/language-core/learning/replay";
 import type { ActionResult } from "@/lib/result";
 
-async function actor(permission: Permission): Promise<{ actorRef: string }> {
+async function actor(permission: Permission): Promise<{ actorRef: string; scope: ActorScope }> {
   const user = await requireUserOrThrow();
   const ctx = await getOrgContext(user);
   if (!ctx) throw Forbidden("Aucune organisation active.");
   requirePermission(ctx.role, permission);
-  return { actorRef: `user:${user.id}` };
+  return {
+    actorRef: `user:${user.id}`,
+    scope: { organizationId: ctx.organization.id, isSuperAdmin: isSuperAdmin(user) },
+  };
 }
 
 function rv(id?: string) {
@@ -50,9 +55,9 @@ export async function approveCandidateAction(
   formData: FormData,
 ): Promise<ActionResult<{ id: string }>> {
   return runAction(async () => {
-    const { actorRef } = await actor("language.review");
+    const { actorRef, scope } = await actor("language.review");
     const raw = formToObject(formData);
-    const c = await approveCandidate({ candidateId: raw.candidateId ?? "", actorRef, note: raw.note || null });
+    const c = await approveCandidate({ candidateId: raw.candidateId ?? "", actorRef, note: raw.note || null }, scope);
     rv(c.id);
     return { id: c.id };
   });
@@ -63,9 +68,9 @@ export async function rejectCandidateAction(
   formData: FormData,
 ): Promise<ActionResult<{ id: string }>> {
   return runAction(async () => {
-    const { actorRef } = await actor("language.review");
+    const { actorRef, scope } = await actor("language.review");
     const raw = formToObject(formData);
-    const c = await rejectCandidate({ candidateId: raw.candidateId ?? "", actorRef, reason: raw.reason || null });
+    const c = await rejectCandidate({ candidateId: raw.candidateId ?? "", actorRef, reason: raw.reason || null }, scope);
     rv(c.id);
     return { id: c.id };
   });
@@ -76,9 +81,9 @@ export async function ignoreCandidateAction(
   formData: FormData,
 ): Promise<ActionResult<{ id: string }>> {
   return runAction(async () => {
-    const { actorRef } = await actor("language.review");
+    const { actorRef, scope } = await actor("language.review");
     const raw = formToObject(formData);
-    const c = await ignoreCandidate({ candidateId: raw.candidateId ?? "", actorRef });
+    const c = await ignoreCandidate({ candidateId: raw.candidateId ?? "", actorRef }, scope);
     rv(c.id);
     return { id: c.id };
   });
@@ -89,23 +94,26 @@ export async function editCandidateAction(
   formData: FormData,
 ): Promise<ActionResult<{ id: string }>> {
   return runAction(async () => {
-    const { actorRef } = await actor("language.review");
+    const { actorRef, scope } = await actor("language.review");
     const raw = formToObject(formData);
-    const c = await editCandidateProposal({
-      candidateId: raw.candidateId ?? "",
-      actorRef,
-      patch: {
-        ...(raw.canonicalText ? { canonicalText: raw.canonicalText } : {}),
-        proposedMeaning: raw.proposedMeaning || null,
-        proposedIntentCode: raw.proposedIntentCode || null,
-        ...(raw.proposedTranslation
-          ? {
-              proposedTranslation: raw.proposedTranslation,
-              proposedTranslationLang: (raw.proposedTranslationLang as LanguageCode) || "FR",
-            }
-          : {}),
+    const c = await editCandidateProposal(
+      {
+        candidateId: raw.candidateId ?? "",
+        actorRef,
+        patch: {
+          ...(raw.canonicalText ? { canonicalText: raw.canonicalText } : {}),
+          proposedMeaning: raw.proposedMeaning || null,
+          proposedIntentCode: raw.proposedIntentCode || null,
+          ...(raw.proposedTranslation
+            ? {
+                proposedTranslation: raw.proposedTranslation,
+                proposedTranslationLang: (raw.proposedTranslationLang as LanguageCode) || "FR",
+              }
+            : {}),
+        },
       },
-    });
+      scope,
+    );
     rv(c.id);
     return { id: c.id };
   });
@@ -116,9 +124,9 @@ export async function promoteCandidateAction(
   formData: FormData,
 ): Promise<ActionResult<{ entryId: string }>> {
   return runAction(async () => {
-    const { actorRef } = await actor("language.review");
+    const { actorRef, scope } = await actor("language.review");
     const raw = formToObject(formData);
-    const res = await promoteLearningCandidate({ candidateId: raw.candidateId ?? "", actorRef });
+    const res = await promoteLearningCandidate({ candidateId: raw.candidateId ?? "", actorRef }, scope);
     rv(raw.candidateId);
     revalidatePath("/language/entries");
     revalidatePath("/language/suggestions");

@@ -48,18 +48,22 @@ export async function importEntries(input: {
       continue;
     }
     try {
-      await createEntry({
-        canonicalText: row.canonicalText,
-        language: row.language,
-        scope: input.scope,
-        domainCode: input.scope === "DOMAIN" ? row.domainCode ?? null : null,
-        meaning: row.meaning ?? null,
-        frenchTranslation: row.frenchTranslation ?? null,
-        source: "IMPORT",
-        status: "SUGGESTED",
-        createdByRef: input.actorRef ?? null,
-        provenance: { datasetSourceId: dataset.id, dataset: input.datasetName, license: input.license },
-      });
+      // `input.scope` exclut ORGANIZATION par le type — un périmètre neutre suffit.
+      await createEntry(
+        {
+          canonicalText: row.canonicalText,
+          language: row.language,
+          scope: input.scope,
+          domainCode: input.scope === "DOMAIN" ? row.domainCode ?? null : null,
+          meaning: row.meaning ?? null,
+          frenchTranslation: row.frenchTranslation ?? null,
+          source: "IMPORT",
+          status: "SUGGESTED",
+          createdByRef: input.actorRef ?? null,
+          provenance: { datasetSourceId: dataset.id, dataset: input.datasetName, license: input.license },
+        },
+        { organizationId: "", isSuperAdmin: false },
+      );
       created += 1;
     } catch {
       skipped += 1; // doublon ou ligne invalide

@@ -11,6 +11,7 @@ import { lcDb } from "./db";
 import { Conflict, NotFound } from "@/server/errors";
 import { normalizeText } from "./normalize";
 import { lcAudit } from "./audit";
+import { assertScopeAccess, resolveOwnedOrganizationId, type ActorScope } from "./access";
 
 /**
  * Cycle de vie d'une `LanguageEntry` : création (par défaut SUGGESTED), édition,
@@ -51,8 +52,16 @@ function assertScopeShape(input: {
   }
 }
 
-export async function createEntry(input: CreateEntryInput) {
+export async function createEntry(input: CreateEntryInput, actor: ActorScope) {
   assertScopeShape(input);
+  // Un appelant non-superadmin ne peut jamais créer une entrée ORGANIZATION
+  // pour une autre organisation que la sienne — la valeur reçue du client
+  // (formulaire) n'est jamais celle qui compte pour ce scope.
+  const organizationId = resolveOwnedOrganizationId(
+    input.scope,
+    input.organizationId ?? null,
+    actor,
+  );
   const normalizedText = normalizeText(input.canonicalText);
   if (!normalizedText) throw Conflict("Texte vide.");
 
@@ -62,7 +71,7 @@ export async function createEntry(input: CreateEntryInput) {
       language: input.language,
       scope: input.scope,
       domainCode: input.domainCode ?? null,
-      organizationId: input.organizationId ?? null,
+      organizationId,
       archivedAt: null,
     },
     select: { id: true },
@@ -76,7 +85,7 @@ export async function createEntry(input: CreateEntryInput) {
       language: input.language,
       scope: input.scope,
       domainCode: input.domainCode ?? null,
-      organizationId: input.organizationId ?? null,
+      organizationId,
       meaning: input.meaning ?? null,
       frenchTranslation: input.frenchTranslation ?? null,
       englishTranslation: input.englishTranslation ?? null,
@@ -112,9 +121,10 @@ export type UpdateEntryInput = {
   }>;
 };
 
-export async function updateEntry(input: UpdateEntryInput) {
+export async function updateEntry(input: UpdateEntryInput, actor: ActorScope) {
   const entry = await lcDb.languageEntry.findUnique({ where: { id: input.entryId } });
   if (!entry) throw NotFound("Entrée introuvable.");
+  assertScopeAccess(entry, actor);
   if (entry.archivedAt) throw Conflict("Entrée archivée.");
 
   const data: Prisma.LanguageEntryUpdateInput = {};
@@ -140,12 +150,16 @@ export async function updateEntry(input: UpdateEntryInput) {
   return updated;
 }
 
-export async function validateEntry(input: {
-  entryId: string;
-  actorRef: string;
-}) {
+export async function validateEntry(
+  input: {
+    entryId: string;
+    actorRef: string;
+  },
+  actor: ActorScope,
+) {
   const entry = await lcDb.languageEntry.findUnique({ where: { id: input.entryId } });
   if (!entry) throw NotFound("Entrée introuvable.");
+  assertScopeAccess(entry, actor);
   if (entry.status === "VALIDATED") return entry;
   if (entry.status === "REJECTED" || entry.status === "ARCHIVED") {
     throw Conflict("Impossible de valider une entrée rejetée ou archivée.");
@@ -170,13 +184,17 @@ export async function validateEntry(input: {
   return updated;
 }
 
-export async function rejectEntry(input: {
-  entryId: string;
-  actorRef: string;
-  reason?: string | null;
-}) {
+export async function rejectEntry(
+  input: {
+    entryId: string;
+    actorRef: string;
+    reason?: string | null;
+  },
+  actor: ActorScope,
+) {
   const entry = await lcDb.languageEntry.findUnique({ where: { id: input.entryId } });
   if (!entry) throw NotFound("Entrée introuvable.");
+  assertScopeAccess(entry, actor);
   const updated = await lcDb.languageEntry.update({
     where: { id: entry.id },
     data: { status: "REJECTED", version: { increment: 1 } },
@@ -192,9 +210,13 @@ export async function rejectEntry(input: {
   return updated;
 }
 
-export async function archiveEntry(input: { entryId: string; actorRef: string }) {
+export async function archiveEntry(
+  input: { entryId: string; actorRef: string },
+  actor: ActorScope,
+) {
   const entry = await lcDb.languageEntry.findUnique({ where: { id: input.entryId } });
   if (!entry) throw NotFound("Entrée introuvable.");
+  assertScopeAccess(entry, actor);
   const updated = await lcDb.languageEntry.update({
     where: { id: entry.id },
     data: { status: "ARCHIVED", archivedAt: new Date(), version: { increment: 1 } },
@@ -211,15 +233,18 @@ export async function archiveEntry(input: { entryId: string; actorRef: string })
 
 // ── Variantes / traductions / intents / exemples ──
 
-export async function addVariant(input: {
-  entryId: string;
-  text: string;
-  variantType?: LanguageVariantType;
-  region?: string | null;
-  notes?: string | null;
-  actorRef?: string | null;
-}) {
-  await ensureEntry(input.entryId);
+export async function addVariant(
+  input: {
+    entryId: string;
+    text: string;
+    variantType?: LanguageVariantType;
+    region?: string | null;
+    notes?: string | null;
+    actorRef?: string | null;
+  },
+  actor: ActorScope,
+) {
+  await ensureEntry(input.entryId, actor);
   const v = await lcDb.languageVariant.create({
     data: {
       languageEntryId: input.entryId,
@@ -241,14 +266,17 @@ export async function addVariant(input: {
   return v;
 }
 
-export async function addTranslation(input: {
-  entryId: string;
-  language: LanguageCode;
-  text: string;
-  source?: LanguageSource;
-  actorRef?: string | null;
-}) {
-  await ensureEntry(input.entryId);
+export async function addTranslation(
+  input: {
+    entryId: string;
+    language: LanguageCode;
+    text: string;
+    source?: LanguageSource;
+    actorRef?: string | null;
+  },
+  actor: ActorScope,
+) {
+  await ensureEntry(input.entryId, actor);
   const t = await lcDb.languageTranslation.create({
     data: {
       languageEntryId: input.entryId,
@@ -268,14 +296,17 @@ export async function addTranslation(input: {
   return t;
 }
 
-export async function addIntentMapping(input: {
-  entryId: string;
-  intentCode: string;
-  domainCode?: string | null;
-  confidence?: number | null;
-  actorRef?: string | null;
-}) {
-  await ensureEntry(input.entryId);
+export async function addIntentMapping(
+  input: {
+    entryId: string;
+    intentCode: string;
+    domainCode?: string | null;
+    confidence?: number | null;
+    actorRef?: string | null;
+  },
+  actor: ActorScope,
+) {
+  await ensureEntry(input.entryId, actor);
   const m = await lcDb.languageIntentMapping.create({
     data: {
       languageEntryId: input.entryId,
@@ -297,9 +328,13 @@ export async function addIntentMapping(input: {
 
 // ── helpers ──
 
-async function ensureEntry(id: string) {
-  const e = await lcDb.languageEntry.findUnique({ where: { id }, select: { id: true } });
+async function ensureEntry(id: string, actor: ActorScope) {
+  const e = await lcDb.languageEntry.findUnique({
+    where: { id },
+    select: { id: true, scope: true, organizationId: true },
+  });
   if (!e) throw NotFound("Entrée introuvable.");
+  assertScopeAccess(e, actor);
 }
 
 async function snapshot(entryId: string, reason: string, changedByRef: string | null) {

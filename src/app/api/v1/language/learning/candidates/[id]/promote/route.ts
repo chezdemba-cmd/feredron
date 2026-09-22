@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { apiError, requireClient } from "@/language-core/api-helpers";
+import { apiError, requireClient, clientOrgActorScope } from "@/language-core/api-helpers";
 import { promoteLearningCandidate } from "@/language-core/learning/promotion-service";
 import { isAppError } from "@/server/errors";
 
@@ -19,10 +19,13 @@ export async function POST(
   if ("response" in gate) return gate.response;
   const { id } = await params;
   try {
-    const res = await promoteLearningCandidate({
-      candidateId: id,
-      actorRef: `app:${gate.client.applicationCode}`,
-    });
+    const res = await promoteLearningCandidate(
+      {
+        candidateId: id,
+        actorRef: `app:${gate.client.applicationCode}`,
+      },
+      clientOrgActorScope(gate.client),
+    );
     return NextResponse.json({ ...res, promotedStatus: "SUGGESTED" });
   } catch (e) {
     if (isAppError(e)) return apiError(e.status, "CONFLICT", e.userMessage);

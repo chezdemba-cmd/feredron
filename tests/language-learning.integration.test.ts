@@ -29,6 +29,7 @@ const REF = `test:${TAG}`;
 const ORG = `it-ll-org-${TAG}`;
 const TERM = `dolo${TAG}`;
 let candidateId = "";
+const actorScope = { organizationId: ORG, isSuperAdmin: false };
 
 before(async () => {
   if (!ENABLED) return;
@@ -74,16 +75,16 @@ after(async () => {
 
 test("un candidat NEW ne peut pas être promu directement", suiteOpts, async () => {
   await assert.rejects(
-    () => d.promote({ candidateId, actorRef: REF }),
+    () => d.promote({ candidateId, actorRef: REF }, actorScope),
     /APPROVED peut être promu/i,
   );
 });
 
 test("approve → promote : entrée SUGGESTED dans le scope suggéré, JAMAIS VALIDATED ni GLOBAL", suiteOpts, async () => {
-  const approved = await d.approve({ candidateId, actorRef: REF });
+  const approved = await d.approve({ candidateId, actorRef: REF }, actorScope);
   assert.equal(approved.status, "APPROVED");
 
-  const res = await d.promote({ candidateId, actorRef: REF });
+  const res = await d.promote({ candidateId, actorRef: REF }, actorScope);
   assert.equal(res.kind, "entry");
 
   const entry = await d.lcDb.languageEntry.findUniqueOrThrow({ where: { id: res.entryId } });
@@ -101,12 +102,12 @@ test("approve → promote : entrée SUGGESTED dans le scope suggéré, JAMAIS VA
 
 test("promotion idempotente : re-promouvoir renvoie la même entrée, sans doublon", suiteOpts, async () => {
   const countBefore = await d.lcDb.languageEntry.count({ where: { createdByRef: REF } });
-  const again = await d.promote({ candidateId, actorRef: REF });
+  const again = await d.promote({ candidateId, actorRef: REF }, actorScope);
   assert.equal(again.kind, "already");
   const countAfter = await d.lcDb.languageEntry.count({ where: { createdByRef: REF } });
   assert.equal(countAfter, countBefore, "aucune entrée supplémentaire créée");
 });
 
 test("approuver un candidat déjà promu est refusé", suiteOpts, async () => {
-  await assert.rejects(() => d.approve({ candidateId, actorRef: REF }), /déjà promu/i);
+  await assert.rejects(() => d.approve({ candidateId, actorRef: REF }, actorScope), /déjà promu/i);
 });

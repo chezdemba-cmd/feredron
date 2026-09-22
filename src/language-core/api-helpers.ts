@@ -2,6 +2,7 @@ import "server-only";
 import { NextResponse, type NextRequest } from "next/server";
 import { authenticateRequest, type AuthedClient } from "./auth-service";
 import { clientCan, type LanguagePermission } from "./permissions";
+import type { ActorScope } from "./access";
 
 /** Enveloppe JSON d'erreur homogène pour la Language API v1. */
 export function apiError(status: number, code: string, message: string) {
@@ -32,6 +33,20 @@ export async function requireClient(
     };
   }
   return { client: auth.client };
+}
+
+/**
+ * Périmètre d'un client API pour les mutations du Language Core (§ ci-dessus
+ * `ActorScope`). Un client applicatif n'a pas d'organisation « propre » — il
+ * n'est autorisé à toucher une entrée/candidat ORGANIZATION que s'il porte
+ * explicitement `language.organization.write` (permission dédiée, distincte
+ * de `language.write`/`language.review` génériques).
+ */
+export function clientOrgActorScope(client: AuthedClient): ActorScope {
+  return {
+    organizationId: "",
+    isSuperAdmin: client.permissions.includes("language.organization.write"),
+  };
 }
 
 export async function readJson<T>(request: NextRequest): Promise<T | null> {

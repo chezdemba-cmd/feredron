@@ -18,6 +18,25 @@ function threshold(): number {
 
 const REDACT_KEYS = /(token|secret|password|authorization|apikey|api_key|cookie)/i;
 
+// Filtre de secours sur le CONTENU (pas seulement le nom de la clé) : un
+// secret loggé sous une clé au nom neutre (ex. `details`, `payload`) doit
+// quand même être redacté. Volontairement conservateur (faux négatifs
+// préférés aux faux positifs sur des identifiants métier normaux type cuid).
+const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const JWT_SHAPE = /^[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}$/;
+const AUTH_SCHEME_PREFIX = /^(Bearer|Basic)\s+\S/i;
+const LONG_HEX = /^[0-9a-f]{32,}$/i;
+const LONG_BASE64URL = /^[A-Za-z0-9_-]{32,}={0,2}$/;
+
+export function looksLikeSecret(value: string): boolean {
+  if (UUID_SHAPE.test(value)) return false; // identifiant courant, pas un secret
+  if (JWT_SHAPE.test(value)) return true;
+  if (AUTH_SCHEME_PREFIX.test(value)) return true;
+  if (LONG_HEX.test(value)) return true;
+  if (LONG_BASE64URL.test(value)) return true;
+  return false;
+}
+
 export type LogFields = Record<string, unknown> & {
   service?: string;
   event?: string;
@@ -34,6 +53,10 @@ function sanitize(fields: LogFields): Record<string, unknown> {
     }
     if (v instanceof Error) {
       out[k] = { name: v.name, message: v.message };
+      continue;
+    }
+    if (typeof v === "string" && looksLikeSecret(v)) {
+      out[k] = "[redacted]";
       continue;
     }
     if (typeof v === "string" && v.length > 500) {

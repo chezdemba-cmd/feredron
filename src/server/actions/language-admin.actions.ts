@@ -4,10 +4,12 @@ import { revalidatePath } from "next/cache";
 import type { LanguageCode, LanguageScope, LanguageVariantType } from "@prisma/client";
 import { requireUserOrThrow } from "@/server/auth/current-user";
 import { getOrgContext } from "@/server/tenant/context";
+import { isSuperAdmin } from "@/server/admin/guard";
 import { requirePermission } from "@/server/rbac/guard";
 import { runAction, formToObject } from "./runner";
 import { Forbidden } from "@/server/errors";
 import { lcDb } from "@/language-core/db";
+import type { ActorScope } from "@/language-core/access";
 import {
   createEntry,
   updateEntry,
@@ -23,12 +25,15 @@ import { importEntries } from "@/language-core/import-service";
 import type { ActionResult } from "@/lib/result";
 
 /** Toutes ces actions exigent `language.admin` (OWNER / ADMIN). */
-async function adminActor(): Promise<{ actorRef: string }> {
+async function adminActor(): Promise<{ actorRef: string; scope: ActorScope }> {
   const user = await requireUserOrThrow();
   const ctx = await getOrgContext(user);
   if (!ctx) throw Forbidden("Aucune organisation active.");
   requirePermission(ctx.role, "language.admin");
-  return { actorRef: `user:${user.id}` };
+  return {
+    actorRef: `user:${user.id}`,
+    scope: { organizationId: ctx.organization.id, isSuperAdmin: isSuperAdmin(user) },
+  };
 }
 
 function rv() {
@@ -42,20 +47,23 @@ export async function createLanguageEntryAction(
   formData: FormData,
 ): Promise<ActionResult<{ id: string }>> {
   return runAction(async () => {
-    const { actorRef } = await adminActor();
+    const { actorRef, scope } = await adminActor();
     const raw = formToObject(formData);
-    const entry = await createEntry({
-      canonicalText: raw.canonicalText ?? "",
-      language: (raw.language as LanguageCode) || "FR",
-      scope: (raw.scope as LanguageScope) || "GLOBAL",
-      domainCode: raw.domainCode || null,
-      organizationId: raw.organizationId || null,
-      meaning: raw.meaning || null,
-      frenchTranslation: raw.frenchTranslation || null,
-      source: "HUMAN",
-      status: "SUGGESTED",
-      createdByRef: actorRef,
-    });
+    const entry = await createEntry(
+      {
+        canonicalText: raw.canonicalText ?? "",
+        language: (raw.language as LanguageCode) || "FR",
+        scope: (raw.scope as LanguageScope) || "GLOBAL",
+        domainCode: raw.domainCode || null,
+        organizationId: raw.organizationId || null,
+        meaning: raw.meaning || null,
+        frenchTranslation: raw.frenchTranslation || null,
+        source: "HUMAN",
+        status: "SUGGESTED",
+        createdByRef: actorRef,
+      },
+      scope,
+    );
     rv();
     return { id: entry.id };
   });
@@ -66,19 +74,22 @@ export async function updateLanguageEntryAction(
   formData: FormData,
 ): Promise<ActionResult<{ id: string }>> {
   return runAction(async () => {
-    const { actorRef } = await adminActor();
+    const { actorRef, scope } = await adminActor();
     const raw = formToObject(formData);
-    const updated = await updateEntry({
-      entryId: raw.entryId ?? "",
-      actorRef,
-      changeReason: raw.changeReason || null,
-      patch: {
-        ...(raw.canonicalText ? { canonicalText: raw.canonicalText } : {}),
-        meaning: raw.meaning || null,
-        frenchTranslation: raw.frenchTranslation || null,
-        englishTranslation: raw.englishTranslation || null,
+    const updated = await updateEntry(
+      {
+        entryId: raw.entryId ?? "",
+        actorRef,
+        changeReason: raw.changeReason || null,
+        patch: {
+          ...(raw.canonicalText ? { canonicalText: raw.canonicalText } : {}),
+          meaning: raw.meaning || null,
+          frenchTranslation: raw.frenchTranslation || null,
+          englishTranslation: raw.englishTranslation || null,
+        },
       },
-    });
+      scope,
+    );
     revalidatePath(`/language/entries/${updated.id}`);
     rv();
     return { id: updated.id };
@@ -90,9 +101,9 @@ export async function validateLanguageEntryAction(
   formData: FormData,
 ): Promise<ActionResult<{ id: string }>> {
   return runAction(async () => {
-    const { actorRef } = await adminActor();
+    const { actorRef, scope } = await adminActor();
     const raw = formToObject(formData);
-    const e = await validateEntry({ entryId: raw.entryId ?? "", actorRef });
+    const e = await validateEntry({ entryId: raw.entryId ?? "", actorRef }, scope);
     revalidatePath(`/language/entries/${e.id}`);
     rv();
     return { id: e.id };
@@ -104,9 +115,9 @@ export async function rejectLanguageEntryAction(
   formData: FormData,
 ): Promise<ActionResult<{ id: string }>> {
   return runAction(async () => {
-    const { actorRef } = await adminActor();
+    const { actorRef, scope } = await adminActor();
     const raw = formToObject(formData);
-    const e = await rejectEntry({ entryId: raw.entryId ?? "", actorRef, reason: raw.reason || null });
+    const e = await rejectEntry({ entryId: raw.entryId ?? "", actorRef, reason: raw.reason || null }, scope);
     revalidatePath(`/language/entries/${e.id}`);
     rv();
     return { id: e.id };
@@ -118,9 +129,9 @@ export async function archiveLanguageEntryAction(
   formData: FormData,
 ): Promise<ActionResult<{ id: string }>> {
   return runAction(async () => {
-    const { actorRef } = await adminActor();
+    const { actorRef, scope } = await adminActor();
     const raw = formToObject(formData);
-    const e = await archiveEntry({ entryId: raw.entryId ?? "", actorRef });
+    const e = await archiveEntry({ entryId: raw.entryId ?? "", actorRef }, scope);
     revalidatePath(`/language/entries/${e.id}`);
     rv();
     return { id: e.id };
@@ -132,15 +143,18 @@ export async function addVariantAction(
   formData: FormData,
 ): Promise<ActionResult<{ id: string }>> {
   return runAction(async () => {
-    const { actorRef } = await adminActor();
+    const { actorRef, scope } = await adminActor();
     const raw = formToObject(formData);
-    const v = await addVariant({
-      entryId: raw.entryId ?? "",
-      text: raw.text ?? "",
-      variantType: (raw.variantType as LanguageVariantType) || "SPELLING",
-      region: raw.region || null,
-      actorRef,
-    });
+    const v = await addVariant(
+      {
+        entryId: raw.entryId ?? "",
+        text: raw.text ?? "",
+        variantType: (raw.variantType as LanguageVariantType) || "SPELLING",
+        region: raw.region || null,
+        actorRef,
+      },
+      scope,
+    );
     revalidatePath(`/language/entries/${raw.entryId}`);
     return { id: v.id };
   });
@@ -151,14 +165,17 @@ export async function addTranslationAction(
   formData: FormData,
 ): Promise<ActionResult<{ id: string }>> {
   return runAction(async () => {
-    const { actorRef } = await adminActor();
+    const { actorRef, scope } = await adminActor();
     const raw = formToObject(formData);
-    const t = await addTranslation({
-      entryId: raw.entryId ?? "",
-      language: (raw.language as LanguageCode) || "FR",
-      text: raw.text ?? "",
-      actorRef,
-    });
+    const t = await addTranslation(
+      {
+        entryId: raw.entryId ?? "",
+        language: (raw.language as LanguageCode) || "FR",
+        text: raw.text ?? "",
+        actorRef,
+      },
+      scope,
+    );
     revalidatePath(`/language/entries/${raw.entryId}`);
     return { id: t.id };
   });
@@ -169,14 +186,17 @@ export async function addIntentAction(
   formData: FormData,
 ): Promise<ActionResult<{ id: string }>> {
   return runAction(async () => {
-    const { actorRef } = await adminActor();
+    const { actorRef, scope } = await adminActor();
     const raw = formToObject(formData);
-    const m = await addIntentMapping({
-      entryId: raw.entryId ?? "",
-      intentCode: raw.intentCode ?? "",
-      domainCode: raw.domainCode || null,
-      actorRef,
-    });
+    const m = await addIntentMapping(
+      {
+        entryId: raw.entryId ?? "",
+        intentCode: raw.intentCode ?? "",
+        domainCode: raw.domainCode || null,
+        actorRef,
+      },
+      scope,
+    );
     revalidatePath(`/language/entries/${raw.entryId}`);
     return { id: m.id };
   });

@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { apiError, readJson, requireClient } from "@/language-core/api-helpers";
+import { apiError, readJson, requireClient, clientOrgActorScope } from "@/language-core/api-helpers";
 import { lcDb } from "@/language-core/db";
 import { updateEntry } from "@/language-core/entry-service";
 import { isAppError } from "@/server/errors";
@@ -52,18 +52,21 @@ export async function PATCH(
   if (!body) return apiError(400, "BAD_REQUEST", "Corps JSON invalide.");
 
   try {
-    const updated = await updateEntry({
-      entryId: id,
-      actorRef: `app:${gate.client.applicationCode}`,
-      changeReason: typeof body.changeReason === "string" ? body.changeReason : null,
-      patch: {
-        ...(typeof body.canonicalText === "string" ? { canonicalText: body.canonicalText } : {}),
-        ...("meaning" in body ? { meaning: (body.meaning as string) ?? null } : {}),
-        ...("frenchTranslation" in body
-          ? { frenchTranslation: (body.frenchTranslation as string) ?? null }
-          : {}),
+    const updated = await updateEntry(
+      {
+        entryId: id,
+        actorRef: `app:${gate.client.applicationCode}`,
+        changeReason: typeof body.changeReason === "string" ? body.changeReason : null,
+        patch: {
+          ...(typeof body.canonicalText === "string" ? { canonicalText: body.canonicalText } : {}),
+          ...("meaning" in body ? { meaning: (body.meaning as string) ?? null } : {}),
+          ...("frenchTranslation" in body
+            ? { frenchTranslation: (body.frenchTranslation as string) ?? null }
+            : {}),
+        },
       },
-    });
+      clientOrgActorScope(gate.client),
+    );
     return NextResponse.json({ id: updated.id, version: updated.version, status: updated.status });
   } catch (e) {
     if (isAppError(e)) return apiError(e.status, "CONFLICT", e.userMessage);

@@ -32,9 +32,16 @@ export type ReserveInput = {
   allowOverbook?: boolean;
 };
 
+/**
+ * Le paramètre `db` est volontairement typé `Prisma.TransactionClient` (et non
+ * `Db` / `PrismaClient`) : impossible à l'appel de passer le client global
+ * `prisma` par erreur et de recréer la course « lire disponible → écrire »
+ * hors transaction. Tout appelant doit ouvrir sa propre transaction
+ * (`Serializable` recommandé) ou utiliser `reserveStockTx`.
+ */
 export async function reserveStock(
   input: ReserveInput,
-  db: Db,
+  db: Prisma.TransactionClient,
 ): Promise<StockReservation> {
   if (!Number.isInteger(input.quantity) || input.quantity <= 0) {
     throw Conflict("La quantité réservée doit être un entier positif.");

@@ -40,6 +40,21 @@ test("§24 : les champs sensibles sont masqués", async () => {
   assert.equal(parsed.note, "ok");
 });
 
+test("les valeurs qui ressemblent à un secret sont masquées même sous une clé neutre", async () => {
+  const { logger } = await import("../src/lib/logger.ts");
+  const jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U";
+  const hexKey = "a".repeat(64);
+  const uuid = "550e8400-e29b-41d4-a716-446655440000";
+  const [line] = capture(() =>
+    logger.info("thing", { details: jwt, payload: hexKey, requestId: uuid, note: "commande #42" }),
+  );
+  const parsed = JSON.parse(line!);
+  assert.equal(parsed.details, "[redacted]");
+  assert.equal(parsed.payload, "[redacted]");
+  assert.equal(parsed.requestId, uuid, "un UUID ordinaire n'est pas un secret");
+  assert.equal(parsed.note, "commande #42");
+});
+
 test("le seuil LOG_LEVEL filtre les niveaux inférieurs", async () => {
   process.env.LOG_LEVEL = "warn";
   const { logger } = await import("../src/lib/logger.ts");
@@ -50,4 +65,13 @@ test("le seuil LOG_LEVEL filtre les niveaux inférieurs", async () => {
     logger.error("e");
   });
   assert.equal(lines.length, 2);
+});
+
+test("§25 : installErrorTracking est idempotent et gère l'absence de SENTRY_DSN sans erreur", async () => {
+  delete process.env.SENTRY_DSN;
+  const { installErrorTracking } = await import("../src/server/observability/error-tracking.ts");
+  assert.doesNotThrow(() => {
+    installErrorTracking();
+    installErrorTracking();
+  });
 });

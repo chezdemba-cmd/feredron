@@ -15,18 +15,23 @@ import {
   PROMOTION_TARGET_STATUS,
   assertPromotionStatus,
 } from "./invariants";
+import { assertScopeAccess, type ActorScope } from "../access";
 
 /**
  * Promotion d'un candidat APPROVED → connaissance `SUGGESTED` (jamais
  * `VALIDATED`, §22/§63). Provenance complète. Conflit re-vérifié juste avant :
  * on ne fusionne JAMAIS automatiquement (§40).
  */
-export async function promoteLearningCandidate(input: {
-  candidateId: string;
-  actorRef: string;
-}): Promise<{ entryId: string; variantId?: string; kind: string }> {
+export async function promoteLearningCandidate(
+  input: {
+    candidateId: string;
+    actorRef: string;
+  },
+  actor: ActorScope,
+): Promise<{ entryId: string; variantId?: string; kind: string }> {
   const c = await lcDb.learningCandidate.findUnique({ where: { id: input.candidateId } });
   if (!c) throw NotFound("Candidat introuvable.");
+  assertScopeAccess({ scope: c.scopeSuggestion, organizationId: c.organizationId }, actor);
   if (c.status === "PROMOTED" && c.promotedEntryId) {
     return { entryId: c.promotedEntryId, kind: "already" };
   }
@@ -82,20 +87,23 @@ export async function promoteLearningCandidate(input: {
       select: { id: true },
     });
     if (existing) return existing.id;
-    const created = await createEntry({
-      canonicalText: c!.canonicalText,
-      language: c!.language,
-      scope,
-      domainCode,
-      organizationId,
-      meaning: c!.proposedMeaning ?? null,
-      frenchTranslation:
-        c!.proposedTranslationLang === "FR" ? c!.proposedTranslation ?? null : null,
-      source: "BUSINESS_CORRECTION",
-      status: targetStatus,
-      createdByRef: input.actorRef,
-      provenance,
-    });
+    const created = await createEntry(
+      {
+        canonicalText: c!.canonicalText,
+        language: c!.language,
+        scope,
+        domainCode,
+        organizationId,
+        meaning: c!.proposedMeaning ?? null,
+        frenchTranslation:
+          c!.proposedTranslationLang === "FR" ? c!.proposedTranslation ?? null : null,
+        source: "BUSINESS_CORRECTION",
+        status: targetStatus,
+        createdByRef: input.actorRef,
+        provenance,
+      },
+      actor,
+    );
     return created.id;
   }
 
@@ -108,33 +116,42 @@ export async function promoteLearningCandidate(input: {
     kind = "entry";
   } else if (c.candidateType === "VARIANT" || c.candidateType === "NORMALIZATION_PATTERN" || c.candidateType === "PRONUNCIATION_VARIANT") {
     entryId = await ensureParentEntry();
-    const v = await addVariant({
-      entryId,
-      text: c.originalPattern ?? c.canonicalText,
-      variantType: c.candidateType === "NORMALIZATION_PATTERN" ? "SPELLING" : c.candidateType === "PRONUNCIATION_VARIANT" ? "PRONUNCIATION" : "SPELLING",
-      notes: `Promu du candidat ${c.id}`,
-      actorRef: input.actorRef,
-    });
+    const v = await addVariant(
+      {
+        entryId,
+        text: c.originalPattern ?? c.canonicalText,
+        variantType: c.candidateType === "NORMALIZATION_PATTERN" ? "SPELLING" : c.candidateType === "PRONUNCIATION_VARIANT" ? "PRONUNCIATION" : "SPELLING",
+        notes: `Promu du candidat ${c.id}`,
+        actorRef: input.actorRef,
+      },
+      actor,
+    );
     variantId = v.id;
     kind = "variant";
   } else if (c.candidateType === "TRANSLATION") {
     entryId = await ensureParentEntry();
-    await addTranslation({
-      entryId,
-      language: c.proposedTranslationLang ?? "FR",
-      text: c.proposedTranslation ?? c.canonicalText,
-      source: "BUSINESS_CORRECTION",
-      actorRef: input.actorRef,
-    });
+    await addTranslation(
+      {
+        entryId,
+        language: c.proposedTranslationLang ?? "FR",
+        text: c.proposedTranslation ?? c.canonicalText,
+        source: "BUSINESS_CORRECTION",
+        actorRef: input.actorRef,
+      },
+      actor,
+    );
     kind = "translation";
   } else if (c.candidateType === "INTENT_MAPPING") {
     entryId = await ensureParentEntry();
-    await addIntentMapping({
-      entryId,
-      intentCode: c.proposedIntentCode ?? "UNKNOWN",
-      domainCode,
-      actorRef: input.actorRef,
-    });
+    await addIntentMapping(
+      {
+        entryId,
+        intentCode: c.proposedIntentCode ?? "UNKNOWN",
+        domainCode,
+        actorRef: input.actorRef,
+      },
+      actor,
+    );
     kind = "intent";
   } else {
     entryId = await ensureParentEntry();
