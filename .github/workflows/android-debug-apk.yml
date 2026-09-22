@@ -16,9 +16,8 @@ jobs:
           distribution: temurin
           java-version: "21"
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
+      # ubuntu-latest embarque déjà un SDK Android (ANDROID_HOME préconfiguré,
+      # sdkmanager sur le PATH) — pas besoin d'action tierce pour l'installer.
       - name: Accept SDK licenses
         run: yes | sdkmanager --licenses || true
 
