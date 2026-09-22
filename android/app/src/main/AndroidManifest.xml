@@ -38,6 +38,12 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
-    <!-- Micro (bouton vocal /ai — getUserMedia dans la WebView, cf. MainActivity). -->
+    <!-- Micro (bouton vocal /ai — getUserMedia dans la WebView, cf. MainActivity).
+         MODIFY_AUDIO_SETTINGS est INDISPENSABLE en plus de RECORD_AUDIO : sans
+         elle, le sous-système audio Android refuse de céder le micro à la
+         WebView même une fois RECORD_AUDIO accordée (NotReadableError /
+         "déjà utilisé par une autre application", constaté en test réel le
+         2026-09-22 malgré RECORD_AUDIO confirmé granted=true via adb). -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
 </manifest>

@@ -12,14 +12,22 @@ import com.getcapacitor.BridgeActivity;
 
 /**
  * `getUserMedia({audio:true})` (bouton micro /ai, cf. MicButton.tsx) est une
- * API web standard : dans une WebView Android, elle exige (1) la permission
- * RECORD_AUDIO déclarée dans le manifeste ET accordée à l'exécution, ET (2)
- * un WebChromeClient qui répond explicitement à onPermissionRequest — sans
- * cela, l'appel JS ne résout ni ne rejette JAMAIS (page qui semble figée),
- * le WebChromeClient par défaut refusant silencieusement toute permission.
+ * API web standard : dans une WebView Android, elle exige :
+ *  (1) RECORD_AUDIO déclarée ET accordée à l'exécution ;
+ *  (2) MODIFY_AUDIO_SETTINGS déclarée — sans elle, le sous-système audio
+ *      Android refuse de céder le micro à la WebView MÊME quand RECORD_AUDIO
+ *      est accordée : la requête échoue en NotReadableError ("déjà utilisé
+ *      par une autre application"), constaté en test réel le 2026-09-22 ;
+ *  (3) un WebChromeClient qui répond explicitement à onPermissionRequest —
+ *      sans cela, l'appel JS ne résout ni ne rejette JAMAIS (page figée), le
+ *      WebChromeClient par défaut refusant silencieusement toute permission.
  */
 public class MainActivity extends BridgeActivity {
     private static final int RC_RECORD_AUDIO = 4201;
+    private static final String[] AUDIO_PERMISSIONS = {
+        Manifest.permission.RECORD_AUDIO,
+        Manifest.permission.MODIFY_AUDIO_SETTINGS,
+    };
     private PermissionRequest pendingWebPermissionRequest;
 
     @Override
@@ -29,19 +37,24 @@ public class MainActivity extends BridgeActivity {
             @Override
             public void onPermissionRequest(final PermissionRequest request) {
                 runOnUiThread(() -> {
-                    if (ContextCompat.checkSelfPermission(MainActivity.this, Manifest.permission.RECORD_AUDIO)
-                            == PackageManager.PERMISSION_GRANTED) {
+                    if (hasAllAudioPermissions()) {
                         request.grant(request.getResources());
                         return;
                     }
                     pendingWebPermissionRequest = request;
-                    ActivityCompat.requestPermissions(
-                            MainActivity.this,
-                            new String[] { Manifest.permission.RECORD_AUDIO },
-                            RC_RECORD_AUDIO);
+                    ActivityCompat.requestPermissions(MainActivity.this, AUDIO_PERMISSIONS, RC_RECORD_AUDIO);
                 });
             }
         });
+    }
+
+    private boolean hasAllAudioPermissions() {
+        for (String p : AUDIO_PERMISSIONS) {
+            if (ContextCompat.checkSelfPermission(this, p) != PackageManager.PERMISSION_GRANTED) {
+                return false;
+            }
+        }
+        return true;
     }
 
     @Override
@@ -49,8 +62,7 @@ public class MainActivity extends BridgeActivity {
             int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode != RC_RECORD_AUDIO || pendingWebPermissionRequest == null) return;
-        boolean granted = grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED;
-        if (granted) {
+        if (hasAllAudioPermissions()) {
             pendingWebPermissionRequest.grant(pendingWebPermissionRequest.getResources());
         } else {
             pendingWebPermissionRequest.deny();
