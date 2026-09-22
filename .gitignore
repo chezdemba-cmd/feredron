@@ -71,3 +71,8 @@ prisma/*.db-journal
 public/*.apk
 /chrome_screen.png
 /phone_screen.png
+
+.vercel
+.env*
+/backups/
+*.dump

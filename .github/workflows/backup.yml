@@ -1,0 +1,45 @@
+name: Sauvegarde DB quotidienne
+
+# Automatise ce que docs/BACKUPS.md documentait sans jamais l'exécuter
+# automatiquement (§ audit production — gate "Backups"). Nécessite un secret
+# de dépôt PROD_DATABASE_URL (Settings → Secrets and variables → Actions)
+# pointant vers la base de production réelle — jamais commité.
+on:
+  schedule:
+    # 03:00 UTC chaque jour — hors heures ouvrées Bamako (UTC+0).
+    - cron: "0 3 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install postgresql-client (pg_dump)
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Backup
+        env:
+          DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::Secret PROD_DATABASE_URL absent — voir docs/BACKUPS.md. Aucune sauvegarde exécutée."
+            exit 1
+          fi
+          npm run db:backup
+
+      - name: Upload dump as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: feredron-db-backup-${{ github.run_id }}
+          path: backups/*.dump
+          retention-days: 35

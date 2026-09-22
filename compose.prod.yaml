@@ -1,0 +1,71 @@
+# FEREDRON — Déploiement de production Docker Compose (§51, Action 3)
+# Lance les 3 composants : base de données, application web et worker d'arrière-plan.
+#
+# Lancement :
+#   docker compose -f compose.prod.yaml up -d --build
+# Migrations initiales / release :
+#   docker compose -f compose.prod.yaml run --rm web npx prisma migrate deploy
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: feredron-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-feredron}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-feredron_change_in_prod}
+      POSTGRES_DB: ${POSTGRES_DB:-feredron_prod}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - feredron_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-feredron} -d ${POSTGRES_DB:-feredron_prod}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: feredron-web
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      APP_ENV: production
+      DEPLOYMENT_TOPOLOGY: single
+      RATE_LIMIT_STORE: memory
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: feredron-worker
+    restart: unless-stopped
+    command: ["npm", "run", "worker"]
+    depends_on:
+      web:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      INTERNAL_APP_URL: "http://web:3000"
+      APP_ENV: production
+      NODE_ENV: production
+
+volumes:
+  feredron_postgres_data:
