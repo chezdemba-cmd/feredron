@@ -16,10 +16,21 @@ jobs:
           distribution: temurin
           java-version: "21"
 
-      # ubuntu-latest embarque déjà un SDK Android (ANDROID_HOME préconfiguré,
-      # sdkmanager sur le PATH) — pas besoin d'action tierce pour l'installer.
+      # ubuntu-latest embarque déjà un SDK Android (ANDROID_HOME préconfiguré),
+      # mais le binaire sdkmanager n'est pas sur le PATH par défaut — on le
+      # localise et on ajoute son dossier au PATH pour les étapes suivantes.
+      - name: Locate sdkmanager
+        run: |
+          SDKMGR=$(find "$ANDROID_HOME" -type f -name sdkmanager 2>/dev/null | head -1)
+          if [ -z "$SDKMGR" ]; then
+            echo "::error::sdkmanager introuvable sous ANDROID_HOME=$ANDROID_HOME"
+            exit 1
+          fi
+          echo "sdkmanager trouve : $SDKMGR"
+          dirname "$SDKMGR" >> "$GITHUB_PATH"
+
       - name: Accept SDK licenses
-        run: yes | sdkmanager --licenses || true
+        run: yes | sdkmanager --licenses
 
       - name: Install required SDK platform/build-tools
         run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
