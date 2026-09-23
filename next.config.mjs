@@ -14,8 +14,15 @@ const csp = [
   "media-src 'self' blob:",
   "font-src 'self' data:",
   "style-src 'self' 'unsafe-inline'",
-  "script-src 'self' 'unsafe-inline'" + (process.env.NODE_ENV === "development" ? " 'unsafe-eval'" : ""),
-  "connect-src 'self'",
+  // connect.facebook.net : SDK "Facebook Login for Business" (WhatsApp
+  // Embedded Signup, Paramètres → WhatsApp) — seul script tiers autorisé.
+  "script-src 'self' 'unsafe-inline' https://connect.facebook.net" +
+    (process.env.NODE_ENV === "development" ? " 'unsafe-eval'" : ""),
+  // graph.facebook.com : requêtes internes du SDK FB (statut de session).
+  "connect-src 'self' https://graph.facebook.com",
+  // Le SDK FB ouvre un iframe caché (fb_xd_fragment) vers facebook.com pour
+  // la communication cross-domain du flux de connexion.
+  "frame-src https://www.facebook.com https://web.facebook.com",
   "worker-src 'self' blob:",
 ].join("; ");
 
