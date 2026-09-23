@@ -51,6 +51,14 @@ export default async function SettingsPage() {
       }
     : null;
   const mockProvider = (process.env.WHATSAPP_PROVIDER ?? "mock") === "mock";
+  const embeddedSignup =
+    process.env.META_APP_ID && process.env.META_EMBEDDED_SIGNUP_CONFIG_ID
+      ? {
+          appId: process.env.META_APP_ID,
+          configId: process.env.META_EMBEDDED_SIGNUP_CONFIG_ID,
+          graphVersion: process.env.META_GRAPH_API_VERSION ?? "v21.0",
+        }
+      : null;
   const deletionRequest = await getDeletionRequest(organization.id);
 
   return (
@@ -74,6 +82,7 @@ export default async function SettingsPage() {
           connection={connectionView}
           canEdit={can(role, "settings.update")}
           mockProvider={mockProvider}
+          embeddedSignup={embeddedSignup}
         />
       </Card>
 

@@ -549,6 +549,12 @@ export const connectWhatsAppSchema = z
     }
   });
 
+export const connectWhatsAppEmbeddedSchema = z.object({
+  code: z.string().trim().min(1, "Code Embedded Signup requis").max(2048),
+  phoneNumberId: z.string().trim().min(1, "Phone Number ID requis").max(64),
+  businessAccountId: z.string().trim().min(1, "WABA ID requis").max(64),
+});
+
 export const sendMessageSchema = z.object({
   conversationId: z.string().min(1),
   body: z.string().trim().min(1, "Message vide").max(4096, "Message trop long"),

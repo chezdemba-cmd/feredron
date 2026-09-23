@@ -36,6 +36,8 @@ const schema = z.object({
   META_APP_ID: z.string().min(1).optional(),
   META_APP_SECRET: z.string().min(1).optional(),
   META_WEBHOOK_VERIFY_TOKEN: z.string().min(1).optional(),
+  /** Configuration Embedded Signup (App Meta → WhatsApp → Embedded Signup). */
+  META_EMBEDDED_SIGNUP_CONFIG_ID: z.string().min(1).optional(),
   /** Clé de chiffrement des tokens WhatsApp — 32 octets en base64 ou hex. */
   WHATSAPP_TOKEN_ENCRYPTION_KEY: z.string().min(32).optional(),
 

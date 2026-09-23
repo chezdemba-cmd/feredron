@@ -4,12 +4,14 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/server/db/client";
 import { actionOrgContext } from "./context";
 import { runAction, formToObject } from "./runner";
-import { Forbidden, NotFound } from "@/server/errors";
+import { Conflict, Forbidden, NotFound } from "@/server/errors";
 import { canAccessConversation, canAssignConversations } from "@/server/whatsapp/scope";
 import {
   connectWhatsApp,
   disconnectWhatsApp,
 } from "@/server/whatsapp/connection-service";
+import { exchangeSignupCode } from "@/server/whatsapp/embedded-signup";
+import { getEnv } from "@/lib/env";
 import { sendConversationMessage } from "@/server/whatsapp/message-service";
 import {
   assignConversation,
@@ -18,6 +20,7 @@ import {
 } from "@/server/whatsapp/conversation-service";
 import {
   connectWhatsAppSchema,
+  connectWhatsAppEmbeddedSchema,
   sendMessageSchema,
   assignConversationSchema,
   setConversationModeSchema,
@@ -69,6 +72,52 @@ export async function connectWhatsAppAction(
       displayPhoneNumber: input.displayPhoneNumber ?? null,
       verifiedName: input.verifiedName ?? null,
       accessToken: input.accessToken ?? "",
+    });
+
+    revalidatePath("/settings");
+    revalidateConversation();
+    return { connectionId: res.connectionId };
+  });
+}
+
+/**
+ * WhatsApp Embedded Signup : reçoit le code + les identifiants renvoyés par
+ * le SDK Facebook Login for Business côté client, échange le code contre un
+ * vrai token serveur-à-serveur (jamais côté client), puis enregistre la
+ * connexion comme le formulaire manuel.
+ */
+export async function connectWhatsAppEmbeddedAction(
+  _prev: ActionResult<{ connectionId: string }> | null,
+  formData: FormData,
+): Promise<ActionResult<{ connectionId: string }>> {
+  return runAction(async () => {
+    const raw = formToObject(formData);
+    const ctx = await actionOrgContext({
+      permission: "settings.update",
+      organizationId: raw.organizationId,
+    });
+    const input = connectWhatsAppEmbeddedSchema.parse(raw);
+
+    const env = getEnv();
+    if (!env.META_APP_ID || !env.META_APP_SECRET) {
+      throw Conflict("Embedded Signup non configuré côté serveur (META_APP_ID/META_APP_SECRET).");
+    }
+
+    const exchanged = await exchangeSignupCode({
+      code: input.code,
+      appId: env.META_APP_ID,
+      appSecret: env.META_APP_SECRET,
+      graphVersion: env.META_GRAPH_API_VERSION,
+    });
+    if (!exchanged.ok) throw Conflict(exchanged.errorMessage);
+
+    const res = await connectWhatsApp({
+      organizationId: ctx.organization.id,
+      actorUserId: ctx.user.id,
+      provider: "META_CLOUD",
+      phoneNumberId: input.phoneNumberId,
+      businessAccountId: input.businessAccountId,
+      accessToken: exchanged.accessToken,
     });
 
     revalidatePath("/settings");

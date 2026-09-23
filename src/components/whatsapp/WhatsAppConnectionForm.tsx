@@ -8,6 +8,7 @@ import {
 } from "@/server/actions/whatsapp.actions";
 import { Field, Input, Select, Badge } from "@/components/ui";
 import { SubmitButton, Feedback, fieldError } from "@/components/form";
+import { WhatsAppEmbeddedSignupButton } from "./WhatsAppEmbeddedSignupButton";
 
 export type WhatsAppConnectionView = {
   status: string;
@@ -35,12 +36,15 @@ export function WhatsAppConnectionForm({
   connection,
   canEdit,
   mockProvider,
+  embeddedSignup,
 }: {
   organizationId: string;
   connection: WhatsAppConnectionView | null;
   canEdit: boolean;
   /** true si WHATSAPP_PROVIDER=mock côté serveur (dev). */
   mockProvider: boolean;
+  /** null si META_APP_ID/META_EMBEDDED_SIGNUP_CONFIG_ID non configurés. */
+  embeddedSignup: { appId: string; configId: string; graphVersion: string } | null;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -119,14 +123,23 @@ export function WhatsAppConnectionForm({
           </form>
         </div>
       ) : !open ? (
-        <button
-          type="button"
-          className="dj-btn dj-btn--primary"
-          style={{ alignSelf: "flex-start" }}
-          onClick={() => setOpen(true)}
-        >
-          Connecter un numéro
-        </button>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, alignItems: "flex-start" }}>
+          {embeddedSignup ? (
+            <WhatsAppEmbeddedSignupButton
+              organizationId={organizationId}
+              appId={embeddedSignup.appId}
+              configId={embeddedSignup.configId}
+              graphVersion={embeddedSignup.graphVersion}
+            />
+          ) : null}
+          <button
+            type="button"
+            className="dj-btn dj-btn--outline"
+            onClick={() => setOpen(true)}
+          >
+            {embeddedSignup ? "Connecter manuellement (avancé)" : "Connecter un numéro"}
+          </button>
+        </div>
       ) : null}
 
       {disconnectState && !disconnectState.ok ? (
