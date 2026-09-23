@@ -56,7 +56,7 @@ export default async function SettingsPage() {
       ? {
           appId: process.env.META_APP_ID,
           configId: process.env.META_EMBEDDED_SIGNUP_CONFIG_ID,
-          graphVersion: process.env.META_GRAPH_API_VERSION ?? "v21.0",
+          graphVersion: process.env.META_GRAPH_API_VERSION ?? "v23.0",
         }
       : null;
   const deletionRequest = await getDeletionRequest(organization.id);

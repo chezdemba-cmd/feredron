@@ -12,7 +12,7 @@ solution non officielle / scraping).
   - **Verify token** = `META_WEBHOOK_VERIFY_TOKEN` (secret)
   - Champs abonnés : `messages` (au minimum)
 - [ ] Signature `X-Hub-Signature-256` vérifiée par l'app (`META_APP_SECRET`) — déjà implémenté.
-- [ ] **Version Graph API** fixée : `META_GRAPH_API_VERSION` (ex : `v21.0`),
+- [ ] **Version Graph API** fixée : `META_GRAPH_API_VERSION` (ex : `v23.0`),
   jamais concaténée à la main ailleurs.
 - [ ] Statut de l'app : passer en **Live** (mode dev = numéros de test seulement).
 

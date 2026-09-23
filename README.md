@@ -225,7 +225,7 @@ npm run check:env   # valide la configuration
 | `NEXT_PUBLIC_APP_URL` | URL publique (liens d'invitation) — défaut `http://localhost:3000` |
 | `DEFAULT_COUNTRY_CODE` / `DEFAULT_CURRENCY` / `DEFAULT_TIMEZONE` | Défauts organisation (`ML` / `XOF` / `Africa/Bamako`) |
 | `WHATSAPP_PROVIDER` | `mock` (défaut, dev/test) ou `meta` (Cloud API). `mock` refusé en prod sauf `WHATSAPP_ALLOW_MOCK_IN_PROD=1` |
-| `META_GRAPH_API_VERSION` | Version API Graph, centralisée — défaut `v21.0` |
+| `META_GRAPH_API_VERSION` | Version API Graph, centralisée — défaut `v23.0` |
 | `META_APP_ID` / `META_APP_SECRET` | App Meta (plateforme). `META_APP_SECRET` requis pour accepter les webhooks POST |
 | `META_WEBHOOK_VERIFY_TOKEN` | Jeton du handshake GET du webhook |
 | `WHATSAPP_TOKEN_ENCRYPTION_KEY` | Clé AES-256-GCM (32 octets base64/hex) pour chiffrer les tokens en base |

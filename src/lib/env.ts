@@ -31,8 +31,8 @@ const schema = z.object({
   WHATSAPP_PROVIDER: z.enum(["mock", "meta"]).default("mock"),
   META_GRAPH_API_VERSION: z
     .string()
-    .regex(/^v\d+\.\d+$/, "Format attendu : vXX.X (ex : v21.0)")
-    .default("v21.0"),
+    .regex(/^v\d+\.\d+$/, "Format attendu : vXX.X (ex : v23.0)")
+    .default("v23.0"),
   META_APP_ID: z.string().min(1).optional(),
   META_APP_SECRET: z.string().min(1).optional(),
   META_WEBHOOK_VERIFY_TOKEN: z.string().min(1).optional(),

@@ -52,7 +52,7 @@ export function getWhatsAppProvider(): WhatsAppProvider {
   const kind = process.env.WHATSAPP_PROVIDER ?? "mock";
   if (kind === "meta") {
     cached = new MetaWhatsAppProvider(
-      process.env.META_GRAPH_API_VERSION ?? "v21.0",
+      process.env.META_GRAPH_API_VERSION ?? "v23.0",
     );
     return cached;
   }
