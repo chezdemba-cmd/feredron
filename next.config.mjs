@@ -18,8 +18,11 @@ const csp = [
   // Embedded Signup, Paramètres → WhatsApp) — seul script tiers autorisé.
   "script-src 'self' 'unsafe-inline' https://connect.facebook.net" +
     (process.env.NODE_ENV === "development" ? " 'unsafe-eval'" : ""),
-  // graph.facebook.com : requêtes internes du SDK FB (statut de session).
-  "connect-src 'self' https://graph.facebook.com",
+  // Requêtes internes du SDK FB : graph.facebook.com (statut de session),
+  // connect.facebook.net (config de l'app), www.facebook.com (télémétrie
+  // interne du SDK — bloquée sinon, casse silencieusement le flux de
+  // connexion malgré une popup qui semble fonctionner).
+  "connect-src 'self' https://graph.facebook.com https://connect.facebook.net https://www.facebook.com",
   // Le SDK FB ouvre un iframe caché (fb_xd_fragment) vers facebook.com pour
   // la communication cross-domain du flux de connexion.
   "frame-src https://www.facebook.com https://web.facebook.com",
