@@ -94,7 +94,10 @@ export function WhatsAppEmbeddedSignupButton({
       if (!event.origin.endsWith("facebook.com")) return;
       try {
         const data = typeof event.data === "string" ? JSON.parse(event.data) : event.data;
-        if (data?.type === "WA_EMBEDDED_SIGNUP" && data?.event === "FINISH") {
+        if (data?.type !== "WA_EMBEDDED_SIGNUP") return;
+        // eslint-disable-next-line no-console
+        console.log("[WA Embedded Signup] message event:", data);
+        if (data?.event === "FINISH") {
           sessionRef.current = {
             phoneNumberId: data.data?.phone_number_id,
             wabaId: data.data?.waba_id,
