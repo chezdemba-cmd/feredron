@@ -111,12 +111,15 @@ export function WhatsAppEmbeddedSignupButton({
   function launch() {
     if (!window.FB) return;
     setStatus("waiting");
+    sessionRef.current = {};
     window.FB.login(
       (response) => {
+        // eslint-disable-next-line no-console
+        console.log("[WA Embedded Signup] FB.login response:", response, "session:", sessionRef.current);
         const code = response.authResponse?.code;
         const { phoneNumberId, wabaId } = sessionRef.current;
         if (!code || !phoneNumberId || !wabaId) {
-          setStatus("idle");
+          setStatus("error");
           return;
         }
         const fd = new FormData();
@@ -147,6 +150,12 @@ export function WhatsAppEmbeddedSignupButton({
         {status === "waiting" ? "Connexion en cours…" : "Connecter mon numéro WhatsApp"}
       </button>
       {state && !state.ok ? <Feedback state={state} /> : null}
+      {status === "error" ? (
+        <span className="dj-error" style={{ fontSize: 13 }}>
+          La connexion a été interrompue avant la sélection du numéro WhatsApp. Ouvrez la
+          console du navigateur (F12) pour le détail technique, ou réessayez.
+        </span>
+      ) : null}
     </div>
   );
 }
