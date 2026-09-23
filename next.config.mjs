@@ -19,10 +19,11 @@ const csp = [
   "script-src 'self' 'unsafe-inline' https://connect.facebook.net" +
     (process.env.NODE_ENV === "development" ? " 'unsafe-eval'" : ""),
   // Requêtes internes du SDK FB : graph.facebook.com (statut de session),
-  // connect.facebook.net (config de l'app), www.facebook.com (télémétrie
-  // interne du SDK — bloquée sinon, casse silencieusement le flux de
+  // connect.facebook.net (config de l'app), www.facebook.com et
+  // web.facebook.com (télémétrie interne du SDK, sur les deux sous-domaines
+  // selon le contexte — bloquée sinon, casse silencieusement le flux de
   // connexion malgré une popup qui semble fonctionner).
-  "connect-src 'self' https://graph.facebook.com https://connect.facebook.net https://www.facebook.com",
+  "connect-src 'self' https://graph.facebook.com https://connect.facebook.net https://www.facebook.com https://web.facebook.com",
   // Le SDK FB ouvre un iframe caché (fb_xd_fragment) vers facebook.com pour
   // la communication cross-domain du flux de connexion.
   "frame-src https://www.facebook.com https://web.facebook.com",
